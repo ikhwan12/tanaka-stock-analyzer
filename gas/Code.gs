@@ -70,31 +70,55 @@ function handleMessage(raw, chatId) {
 Tap LOGIN or type:
 LOGIN username password` });
   }
-  const username = session ? session.username : '';
+
+  // Username priority: 1) Telegram session, 2) embedded in message (web app)
+  // Web app always appends username to commands: BUY AMZN 100 username
+  const sessionUser = session ? session.username : '';
 
   if (cmd === 'BUY') {
     if (parts.length < 3) return promptBuy();
-    return analyze(parts[1].toUpperCase(), parseFloat(parts[2]) || 100, 'BUY', username);
+    const uBuy = sessionUser || parts[3] || '';
+    return analyze(parts[1].toUpperCase(), parseFloat(parts[2]) || 100, 'BUY', uBuy);
   }
   if (cmd === 'SELL') {
     if (parts.length < 3) return promptSell();
-    return analyzeSell(parts[1].toUpperCase(), parseFloat(parts[2]) || 100, username);
+    const uSell = sessionUser || parts[3] || '';
+    return analyzeSell(parts[1].toUpperCase(), parseFloat(parts[2]) || 100, uSell);
   }
   if (cmd === 'UPDATE') {
     if (parts.length < 4) return promptUpdate();
-    return recordTrade(parts[1].toUpperCase(), parts[2][0].toUpperCase(), parseFloat(parts[2].slice(1)), parseFloat(parts[3]), username);
+    const uUpd = sessionUser || parts[4] || '';
+    return recordTrade(parts[1].toUpperCase(), parts[2][0].toUpperCase(), parseFloat(parts[2].slice(1)), parseFloat(parts[3]), uUpd);
   }
-  if (cmd === 'CHECK') return runCheck(chatId);
+  if (cmd === 'CHECK') {
+    // Web: CHECK username | Telegram: CHECK (username from session)
+    const uChk = sessionUser || parts[1] || '';
+    return portfolio(uChk);
+  }
   if (cmd === 'WATCHLIST') {
-    const sub  = (parts[1] || '').toUpperCase();
-    const tick = (parts[2] || '').toUpperCase();
-    if (sub === 'ADD')    return watchlistAdd(username, tick);
-    if (sub === 'REMOVE') return watchlistRemove(username, tick);
-    if (sub === 'LIST')   return watchlistList(username);
-    if (sub === 'SCAN')   return watchlistScan(username);
+    const sub = (parts[1] || '').toUpperCase();
+    // Web format:      WATCHLIST ADD username TICKER  (4 parts)
+    // Telegram format: WATCHLIST ADD TICKER           (3 parts, username from session)
+    let wlUser, tick;
+    if (sessionUser) {
+      // Telegram: username from session
+      wlUser = sessionUser;
+      tick   = (parts[2] || '').toUpperCase();
+    } else {
+      // Web app: username embedded in message
+      wlUser = parts[2] || '';
+      tick   = (parts[3] || '').toUpperCase();
+    }
+    if (sub === 'ADD')    return watchlistAdd(wlUser, tick);
+    if (sub === 'REMOVE') return watchlistRemove(wlUser, tick);
+    if (sub === 'LIST')   return watchlistList(sessionUser || parts[2] || '');
+    if (sub === 'SCAN')   return watchlistScan(sessionUser || parts[2] || '');
     return promptWatchlist();
   }
-  if (cmd === 'POSITIONS') return portfolio(username);
+  if (cmd === 'POSITIONS') {
+    const uPos = sessionUser || parts[1] || '';
+    return portfolio(uPos);
+  }
 
   return json({ message: `❓ Unknown command: ${cmd}\n\nTap /help to see all commands.` });
 }
