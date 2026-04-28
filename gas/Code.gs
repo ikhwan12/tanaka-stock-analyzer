@@ -78,11 +78,12 @@ function deleteSession(chatId) {
 // ══════════════════════════════════════════════
 function handleMessage(message, chatId) {
   const parts = message.split(' ');
-  const cmd   = parts[0].toUpperCase();
+  // Strip leading slash and @botname (e.g. /buy@MyBot → BUY)
+  const cmd   = parts[0].toUpperCase().replace(/^\//, '').split('@')[0];
 
   // ── Public commands (no login required) ──
-  if (cmd === '/START' || cmd === 'START') return sendWelcome(chatId);
-  if (cmd === '/HELP'  || cmd === 'HELP')  return sendHelp(chatId);
+  if (cmd === 'START')  return sendWelcome(chatId);
+  if (cmd === 'HELP')   return sendHelp(chatId);
   if (cmd === 'LOGIN')  return handleLogin(parts, chatId);
   if (cmd === 'LOGOUT') return handleLogout(chatId);
 
@@ -147,18 +148,21 @@ Type HELP to see all commands.` });
 //  LOGIN / LOGOUT
 // ══════════════════════════════════════════════
 function handleLogin(parts, chatId) {
-  if (parts.length < 3) {
+  // parts[0] = LOGIN or /LOGIN, parts[1] = username, parts[2] = password
+  if (parts.length < 3 || !parts[1] || !parts[2]) {
     return json({ message:
 `❓ Usage: LOGIN username password
 
 Example:
-LOGIN tanaka00 mypassword` });
+LOGIN tanaka00 mypassword
+
+Or tap the LOGIN command and type:
+tanaka00 mypassword` });
   }
 
   const username = parts[1];
   const password = parts[2];
-  const auth     = authUser(username, password);
-  const data     = JSON.parse(auth.getContent());
+  const data     = checkCredentials(username, password);
 
   if (data.success) {
     if (chatId) createSession(chatId, data.username);
@@ -286,8 +290,9 @@ ${authSection}
 // ══════════════════════════════════════════════
 //  AUTH — Check credentials from users sheet
 // ══════════════════════════════════════════════
-function authUser(username, password) {
-  if (!username || !password) return json({ success: false, message: '⚠️ Username and password required.' });
+// Returns plain object — use this internally (not from doGet)
+function checkCredentials(username, password) {
+  if (!username || !password) return { success: false, message: '⚠️ Username and password required.' };
   const ss    = SpreadsheetApp.openById(SPREADSHEET_ID);
   let sheet   = ss.getSheetByName('users');
   if (!sheet) {
@@ -297,11 +302,17 @@ function authUser(username, password) {
   }
   const rows = sheet.getDataRange().getValues().slice(1);
   for (const row of rows) {
-    if (row[0] === username && row[1] === password) {
-      return json({ success: true, username: username, watchlist: (row[2] || '').toString() });
+    if (String(row[0]).trim() === String(username).trim() &&
+        String(row[1]).trim() === String(password).trim()) {
+      return { success: true, username: String(row[0]).trim(), watchlist: (row[2] || '').toString() };
     }
   }
-  return json({ success: false, message: '⚠️ Invalid username or password.' });
+  return { success: false, message: '⚠️ Invalid username or password.' };
+}
+
+// Returns JSON response — use this from doGet / web frontend
+function authUser(username, password) {
+  return json(checkCredentials(username, password));
 }
 
 // ══════════════════════════════════════════════
