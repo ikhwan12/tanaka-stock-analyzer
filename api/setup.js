@@ -37,6 +37,8 @@ export default async function handler(req, res) {
           { command: 'watchlist', description: 'Manage watchlist — WATCHLIST SCAN' },
           { command: 'profile',   description: 'Set risk profile — LOW / MEDIUM / HIGH' },
           { command: 'explain',   description: 'What do results mean? EXPLAIN BUY or EXPLAIN SELL' },
+          { command: 'balance',   description: 'Set or view initial balance — BALANCE 1000' },
+          { command: 'clear',     description: 'Reset portfolio to initial balance' },
           { command: 'register',  description: 'Register for full access' }
         ]
       })

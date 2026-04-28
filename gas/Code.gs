@@ -125,6 +125,8 @@ function handleMessage(raw, chatId, tgUsername, tgId) {
     if (cmd === 'REGISTER')  return sendRegisterInfo();
     if (cmd === 'EXPLAIN')   return sendExplain('');
     if (cmd === 'PROFILE')   return promptProfile();
+    if (cmd === 'BALANCE')   return getBalance(sessionUser || '');
+    if (cmd === 'CLEAR')     return promptClear();
     if (cmd === 'BUY')       return promptBuy();
     if (cmd === 'SELL')      return promptSell();
     if (cmd === 'UPDATE')    return promptUpdate();
@@ -221,6 +223,24 @@ Please login first.` });
   if (cmd === 'POSITIONS') {
     const uPos = sessionUser || parts[1] || '';
     return portfolio(uPos);
+  }
+  if (cmd === 'BALANCE') {
+    const uBal = sessionUser || parts[1] || '';
+    if (parts.length >= 2 && !isNaN(parseFloat(parts[1]))) {
+      // BALANCE 500 → set initial balance
+      return setBalance(uBal, parseFloat(parts[1]));
+    }
+    if (parts.length >= 3 && !isNaN(parseFloat(parts[2]))) {
+      // BALANCE username 500 (web app)
+      return setBalance(parts[1] || sessionUser, parseFloat(parts[2]));
+    }
+    return getBalance(uBal);
+  }
+  if (cmd === 'CLEAR') {
+    const uClr = sessionUser || parts[1] || '';
+    const confirmed = (parts[parts.length - 1] || '').toUpperCase() === 'YES';
+    if (!confirmed) return promptClear();
+    return clearPortfolio(uClr);
   }
 
   return json({ message: `❓ Unknown command: ${cmd}\n\nTap /help to see all commands.` });
@@ -434,6 +454,9 @@ UPDATE TICKER B/SAMOUNT PRICE
 → Sell: UPDATE AMZN S100 195.00
 
 /check → View holdings & P&L
+BALANCE amount → Set initial balance
+→ Example: BALANCE 1000
+CLEAR YES → Reset portfolio
 
 📡 WATCHLIST
 WATCHLIST ADD TICKER
@@ -785,14 +808,28 @@ function portfolio(username) {
   const openPnl     = totalValue - totalInvested;
   const totalPnl    = openPnl + totalRealizedPnl;
   const totalPnlPct = totalInvested > 0 ? (totalPnl / totalInvested * 100).toFixed(1) : '0.0';
+  // Get initial balance for context
+  let initBal = 0;
+  try {
+    const bd = JSON.parse(getBalance(username).getContent());
+    initBal  = bd.balance || 0;
+  } catch(e) {}
+
   lines.push('─────────────────────');
+  if (initBal > 0) lines.push('Start:    $' + initBal.toFixed(2));
   lines.push('Invested: $' + totalInvested.toFixed(2));
   lines.push('Value:    $' + totalValue.toFixed(2));
   if (totalRealizedPnl !== 0) {
     lines.push('Realized: ' + (totalRealizedPnl >= 0 ? '+' : '') + '$' + totalRealizedPnl.toFixed(2));
   }
-  lines.push('Total P&L: ' + (totalPnl >= 0 ? '+' : '') + '$' + totalPnl.toFixed(2));
-  return json({ message: lines.join('\n'), positions, totalInvested: +totalInvested.toFixed(2), totalValue: +totalValue.toFixed(2), totalPnl: +totalPnl.toFixed(2), totalRealizedPnl: +totalRealizedPnl.toFixed(2) });
+  const totalPnlStr = (totalPnl >= 0 ? '+' : '') + '$' + totalPnl.toFixed(2);
+  if (initBal > 0) {
+    const fromStart = totalPnl / initBal * 100;
+    lines.push('Total P&L: ' + totalPnlStr + ' (' + (fromStart >= 0 ? '+' : '') + fromStart.toFixed(1) + '% from start)');
+  } else {
+    lines.push('Total P&L: ' + totalPnlStr);
+  }
+  return json({ message: lines.join('\n'), positions, totalInvested: +totalInvested.toFixed(2), totalValue: +totalValue.toFixed(2), totalPnl: +totalPnl.toFixed(2), totalRealizedPnl: +totalRealizedPnl.toFixed(2), initialBalance: initBal });
 }
 
 // ══════════════════════════════════════════════
@@ -1164,6 +1201,131 @@ maintaining and improving this project.
 
 ━━━━━━━━━━━━━━━━━━━━━
 Ready? Just message @ikhwantan 😊` });
+}
+
+// ══════════════════════════════════════════════
+//  BALANCE — Initial balance per user
+// ══════════════════════════════════════════════
+function getBalance(username) {
+  const ss      = SpreadsheetApp.openById(SPREADSHEET_ID);
+  const sheet   = ss.getSheetByName('users');
+  if (!sheet) return json({ message: '⚠️ Users sheet not found.', balance: 0 });
+  const rows    = sheet.getDataRange().getValues();
+  const headers = rows[0].map(h => String(h).trim().toLowerCase());
+  const uCol    = headers.indexOf('username');
+  let bCol      = headers.indexOf('initial_balance');
+
+  if (bCol < 0) {
+    // Create column
+    sheet.getRange(1, headers.length + 1).setValue('initial_balance');
+    bCol = headers.length;
+  }
+
+  for (let i = 1; i < rows.length; i++) {
+    if (String(rows[i][uCol]).trim().toLowerCase() === String(username).trim().toLowerCase()) {
+      const bal = parseFloat(rows[i][bCol] || 0) || 0;
+      return json({
+        balance: bal,
+        message:
+`💰 INITIAL BALANCE
+
+User: ${username}
+Balance: $${bal.toFixed(2)}
+
+${bal === 0
+  ? 'Not set yet.\n\nTo set your balance:\nBALANCE amount\nExample: BALANCE 1000'
+  : 'To update: BALANCE amount\nExample: BALANCE 1500'}`
+      });
+    }
+  }
+  return json({ balance: 0, message: '⚠️ User not found: ' + username });
+}
+
+function setBalance(username, amount) {
+  if (isNaN(amount) || amount < 0) return json({ message: '❓ Invalid amount.\n\nExample: BALANCE 1000' });
+  const ss      = SpreadsheetApp.openById(SPREADSHEET_ID);
+  const sheet   = ss.getSheetByName('users');
+  if (!sheet) return json({ message: '⚠️ Users sheet not found.' });
+  const rows    = sheet.getDataRange().getValues();
+  const headers = rows[0].map(h => String(h).trim().toLowerCase());
+  const uCol    = headers.indexOf('username');
+  let bCol      = headers.indexOf('initial_balance');
+
+  if (bCol < 0) {
+    sheet.getRange(1, headers.length + 1).setValue('initial_balance');
+    bCol = headers.length;
+  }
+
+  for (let i = 1; i < rows.length; i++) {
+    if (String(rows[i][uCol]).trim().toLowerCase() === String(username).trim().toLowerCase()) {
+      sheet.getRange(i + 1, bCol + 1).setValue(amount);
+      return json({
+        balance: amount,
+        message:
+`✅ Balance Updated!
+
+User: ${username}
+Initial Balance: $${amount.toFixed(2)}
+
+Your portfolio P&L will now be calculated
+against this starting balance.`
+      });
+    }
+  }
+  return json({ message: '⚠️ User not found: ' + username });
+}
+
+// ══════════════════════════════════════════════
+//  CLEAR PORTFOLIO
+// ══════════════════════════════════════════════
+function promptClear() {
+  return json({ message:
+`⚠️ CLEAR PORTFOLIO
+
+This will delete ALL your trade history
+and reset your portfolio to your initial balance.
+
+This action CANNOT be undone.
+
+To confirm, type:
+CLEAR YES` });
+}
+
+function clearPortfolio(username) {
+  const ss    = SpreadsheetApp.openById(SPREADSHEET_ID);
+  const sheet = ss.getSheetByName('transactions');
+  if (!sheet || sheet.getLastRow() <= 1) {
+    return json({ message: '💼 Portfolio is already empty.' });
+  }
+
+  const rows    = sheet.getDataRange().getValues();
+  const headers = rows[0];
+  const uIdx    = headers.indexOf('username');
+
+  // Delete rows belonging to this user (iterate backwards)
+  let deleted = 0;
+  for (let i = rows.length - 1; i >= 1; i--) {
+    const rowUser = uIdx >= 0 ? String(rows[i][uIdx]).trim() : 'tanaka00';
+    if (rowUser.toLowerCase() === String(username).trim().toLowerCase()) {
+      sheet.deleteRow(i + 1);
+      deleted++;
+    }
+  }
+
+  // Get initial balance to show in confirmation
+  const balData = JSON.parse(getBalance(username).getContent());
+
+  return json({ message:
+`✅ PORTFOLIO CLEARED
+
+User: ${username}
+Trades deleted: ${deleted}
+${balData.balance > 0
+  ? 'Reset to initial balance: $' + balData.balance.toFixed(2)
+  : 'Initial balance: not set (use BALANCE amount to set one)'}
+
+Your portfolio is now empty.
+Start recording new trades with UPDATE.` });
 }
 
 // ══════════════════════════════════════════════
