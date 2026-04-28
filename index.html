@@ -23,7 +23,7 @@ body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(
 .field input:focus{border-color:var(--accent);}
 .login-btn{width:100%;padding:14px;background:var(--accent);color:var(--bg);font-family:var(--mono);font-size:12px;font-weight:700;letter-spacing:3px;text-transform:uppercase;border:none;cursor:pointer;margin-top:8px;}
 .login-btn:disabled{opacity:.5;cursor:not-allowed;}
-.login-error{font-size:11px;color:var(--red);margin-top:12px;letter-spacing:1px;display:none;}
+.login-error{font-size:12px;color:var(--red);margin-top:12px;letter-spacing:1px;padding:10px 14px;border:1px solid var(--red);background:rgba(255,59,92,.08);display:none;}
 #dashboard{display:none;min-height:100vh;position:relative;z-index:1;}
 .topbar{display:flex;align-items:center;justify-content:space-between;padding:16px 32px;border-bottom:1px solid var(--border);background:var(--panel);position:sticky;top:0;z-index:50;}
 .topbar-logo{font-family:var(--sans);font-size:13px;font-weight:800;letter-spacing:4px;}
@@ -292,6 +292,7 @@ async function doLogin(){
   try{
     const data=await callAPI('LOGIN '+u+' '+p);
     if(data.success){
+      // ✅ Success — redirect to dashboard
       currentUser=data.username;
       watchlist=data.watchlist?data.watchlist.split(',').map(t=>t.trim()).filter(Boolean):[];
       saveSession(currentUser, watchlist);
@@ -299,9 +300,19 @@ async function doLogin(){
       document.getElementById('login-screen').style.display='none';
       document.getElementById('dashboard').style.display='block';
       document.getElementById('topbar-username').textContent=currentUser.toUpperCase();
-      renderWatchlistChips();loadPositions();
-    }else{err.textContent=data.message||'⚠ Invalid credentials';err.style.display='block';document.getElementById('l-pass').value='';}
-  }catch(e){err.textContent='⚠ Network error';err.style.display='block';}
+      renderWatchlistChips();
+      loadPositions();
+    }else{
+      // ❌ Wrong credentials — show error, clear password
+      err.textContent='⚠ ' + (data.message || 'Invalid username or password.');
+      err.style.display='block';
+      document.getElementById('l-pass').value='';
+      document.getElementById('l-pass').focus();
+    }
+  }catch(e){
+    err.textContent='⚠ Network error — check your connection.';
+    err.style.display='block';
+  }
   btn.disabled=false;btn.textContent='INITIALIZE SESSION →';
 }
 

@@ -197,22 +197,28 @@ function handleLogin(parts, chatId) {
 
   if (result.success) {
     if (chatId) createSession(chatId, result.username);
-    return json({ message:
+    return json({
+      success:   true,
+      username:  result.username,
+      watchlist: result.watchlist || '',
+      message:
 `✅ LOGIN SUCCESSFUL
 
 Welcome, ${result.username.toUpperCase()}! 👋
 
 You now have full access.
-Tap /help to see all commands.` });
+Tap /help to see all commands.`
+    });
   }
 
-  return json({ message:
+  return json({
+    success: false,
+    message:
 `❌ LOGIN FAILED
 
 Wrong username or password.
-
-Try again:
-LOGIN username password` });
+Please try again.`
+  });
 }
 
 function handleLogout(chatId) {
