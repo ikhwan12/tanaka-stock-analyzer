@@ -3,5 +3,10 @@
   "rewrites": [
     { "source": "/api/(.*)", "destination": "/api/$1" },
     { "source": "/(.*)", "destination": "/index.html" }
-  ]
+  ],
+  "functions": {
+    "api/telegram.js": { "maxDuration": 60 },
+    "api/query.js":    { "maxDuration": 60 },
+    "api/setup.js":    { "maxDuration": 30 }
+  }
 }
