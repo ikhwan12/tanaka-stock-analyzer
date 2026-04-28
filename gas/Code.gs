@@ -13,6 +13,9 @@ function doGet(e) {
     const msg    = (e.parameter.message || '').trim();
     const chatId = (e.parameter.chatId  || '').toString().trim();
 
+    if (e.parameter.debug === '1') {
+      return json({ status: 'OK', version: 'v3', spreadsheetId: SPREADSHEET_ID, timestamp: new Date().toISOString() });
+    }
     if (msg) return handleMessage(msg, chatId);
 
     // Legacy web frontend calls
@@ -43,7 +46,7 @@ function handleMessage(raw, chatId) {
 
   // ── Menu taps with NO args → show instruction prompt ──
   if (!hasArgs) {
-    if (cmd === 'LOGIN')     return promptLogin();
+    if (cmd === 'LOGIN' || cmd === 'AUTH') return promptLogin();
     if (cmd === 'LOGOUT')    return handleLogout(chatId);
     if (cmd === 'BUY')       return promptBuy();
     if (cmd === 'SELL')      return promptSell();
@@ -55,7 +58,7 @@ function handleMessage(raw, chatId) {
   }
 
   // ── Commands with args ──
-  if (cmd === 'LOGIN')  return handleLogin(parts, chatId);
+  if (cmd === 'LOGIN' || cmd === 'AUTH') return handleLogin(parts, chatId);
   if (cmd === 'LOGOUT') return handleLogout(chatId);
 
   // ── Auth wall for all other commands ──
@@ -679,6 +682,28 @@ function setTelegramCommands() {
     { method: 'POST', contentType: 'application/json', payload: JSON.stringify({ commands }) }
   );
   Logger.log(resp.getContentText());
+}
+
+
+// ══════════════════════════════════════════════
+//  DEBUG — test this URL in browser to verify GAS is live
+//  URL: YOUR_GAS_URL?debug=1
+// ══════════════════════════════════════════════
+function testSetup() {
+  try {
+    const ss    = SpreadsheetApp.openById(SPREADSHEET_ID);
+    const sheets = ss.getSheets().map(s => s.getName());
+    Logger.log('Sheets: ' + sheets.join(', '));
+    // Ensure all required sheets exist
+    ['users','sessions','transactions'].forEach(name => {
+      if (!ss.getSheetByName(name)) {
+        Logger.log('Creating sheet: ' + name);
+      }
+    });
+    Logger.log('Setup OK');
+  } catch(e) {
+    Logger.log('Error: ' + e.toString());
+  }
 }
 
 // ══════════════════════════════════════════════

@@ -290,7 +290,7 @@ async function doLogin(){
   if(!u||!p){err.textContent='⚠ Enter username and password';err.style.display='block';return;}
   btn.disabled=true;btn.textContent='AUTHENTICATING...';
   try{
-    const data=await callAPI('AUTH '+u+' '+p);
+    const data=await callAPI('LOGIN '+u+' '+p);
     if(data.success){
       currentUser=data.username;
       watchlist=data.watchlist?data.watchlist.split(',').map(t=>t.trim()).filter(Boolean):[];
