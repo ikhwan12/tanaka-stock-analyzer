@@ -35,6 +35,7 @@ export default async function handler(req, res) {
           { command: 'update',    description: 'Record a trade — UPDATE TICKER B100 185.20' },
           { command: 'check',     description: 'View portfolio and P&L' },
           { command: 'watchlist', description: 'Manage watchlist — WATCHLIST SCAN' },
+          { command: 'profile',   description: 'Set risk profile — LOW / MEDIUM / HIGH' },
           { command: 'register',  description: 'Register for full access' }
         ]
       })

@@ -5,6 +5,77 @@
 const SPREADSHEET_ID = '1VqEPNEgGlhCQqO-g7yNwwFeiRi2JuzwM-758JgTw2Fg';
 const BOT_TOKEN      = '8777002152:AAGlHUUQ2C5b1MoAUhRzPZMLUTvYYC5Q4lg';
 
+// ── Risk Profile Thresholds ───────────────────
+const PROFILES = {
+  LOW:    { zBuy: -2.0, rBuy: 25, zSell: 2.0, rSell: 75, label: '🟢 Low Risk',    emoji: '🟢' },
+  MEDIUM: { zBuy: -1.5, rBuy: 35, zSell: 1.5, rSell: 65, label: '🟡 Medium Risk', emoji: '🟡' },
+  HIGH:   { zBuy: -1.0, rBuy: 45, zSell: 1.0, rSell: 55, label: '🔴 High Risk',   emoji: '🔴' }
+};
+
+function getProfile(username) {
+  if (!username) return PROFILES.MEDIUM;
+  try {
+    const ss    = SpreadsheetApp.openById(SPREADSHEET_ID);
+    const sheet = ss.getSheetByName('users');
+    if (!sheet) return PROFILES.MEDIUM;
+    const rows    = sheet.getDataRange().getValues();
+    const headers = rows[0].map(h => String(h).trim().toLowerCase());
+    const uCol    = headers.indexOf('username');
+    const prCol   = headers.indexOf('risk_profile');
+    if (prCol < 0) return PROFILES.MEDIUM;
+    for (let i = 1; i < rows.length; i++) {
+      if (String(rows[i][uCol]).trim().toLowerCase() === String(username).trim().toLowerCase()) {
+        const p = String(rows[i][prCol]).trim().toUpperCase();
+        return PROFILES[p] || PROFILES.MEDIUM;
+      }
+    }
+  } catch(e) {}
+  return PROFILES.MEDIUM;
+}
+
+function setProfile(username, profileKey) {
+  profileKey = profileKey.toUpperCase();
+  if (!PROFILES[profileKey]) return json({ message: '❓ Invalid profile. Choose: LOW, MEDIUM, or HIGH' });
+  const ss    = SpreadsheetApp.openById(SPREADSHEET_ID);
+  const sheet = ss.getSheetByName('users');
+  if (!sheet) return json({ message: '⚠️ Users sheet not found.' });
+  const rows    = sheet.getDataRange().getValues();
+  const headers = rows[0].map(h => String(h).trim().toLowerCase());
+  const uCol    = headers.indexOf('username');
+  let prCol     = headers.indexOf('risk_profile');
+
+  // Add risk_profile column if missing
+  if (prCol < 0) {
+    prCol = headers.length;
+    sheet.getRange(1, prCol + 1).setValue('risk_profile');
+  }
+
+  for (let i = 1; i < rows.length; i++) {
+    if (String(rows[i][uCol]).trim().toLowerCase() === String(username).trim().toLowerCase()) {
+      sheet.getRange(i + 1, prCol + 1).setValue(profileKey);
+      const p = PROFILES[profileKey];
+      return json({ message:
+`✅ Profile Updated!
+
+Your risk profile: ${p.label}
+
+New thresholds:
+📉 Buy signal:
+  Price Drift < ${p.zBuy}
+  Momentum   < ${p.rBuy}
+
+📈 Sell signal:
+  Price Drift > ${p.zSell}
+  Momentum   > ${p.rSell}
+
+${profileKey === 'LOW'    ? 'Conservative — only strongest signals.' :
+  profileKey === 'MEDIUM' ? 'Balanced — standard signals.' :
+  'Aggressive — picks up smaller opportunities.'}` });
+    }
+  }
+  return json({ message: '⚠️ User not found: ' + username });
+}
+
 // ══════════════════════════════════════════════
 //  ENTRY POINT
 // ══════════════════════════════════════════════
@@ -44,12 +115,14 @@ function handleMessage(raw, chatId, tgUsername, tgId) {
   if (cmd === 'START')    return sendWelcome(chatId, tgUsername);
   if (cmd === 'HELP')     return sendHelp(chatId);
   if (cmd === 'REGISTER') return sendRegisterInfo();
+  if (cmd === 'PROFILE')  { /* handled below with auth */ }
 
   // ── Menu taps with NO args → show instruction prompt ──
   if (!hasArgs) {
     if (cmd === 'LOGIN' || cmd === 'AUTH') return promptLogin();
     if (cmd === 'LOGOUT')    return handleLogout(chatId);
     if (cmd === 'REGISTER')  return sendRegisterInfo();
+    if (cmd === 'PROFILE')   return promptProfile();
     if (cmd === 'BUY')       return promptBuy();
     if (cmd === 'SELL')      return promptSell();
     if (cmd === 'UPDATE')    return promptUpdate();
@@ -114,9 +187,14 @@ Please login first.` });
     return recordTrade(parts[1].toUpperCase(), parts[2][0].toUpperCase(), parseFloat(parts[2].slice(1)), parseFloat(parts[3]), uUpd);
   }
   if (cmd === 'CHECK') {
-    // Web: CHECK username | Telegram: CHECK (username from session)
     const uChk = sessionUser || parts[1] || '';
     return portfolio(uChk);
+  }
+  if (cmd === 'PROFILE' || cmd === 'PROFILE') {
+    const uPro = sessionUser || parts[2] || '';
+    const key  = (parts[1] || '').toUpperCase();
+    if (!key || key === 'PROFILE') return promptProfile();
+    return setProfile(uPro, key);
   }
   if (cmd === 'WATCHLIST') {
     const sub = (parts[1] || '').toUpperCase();
@@ -480,29 +558,37 @@ function calcIndicators(closes) {
 function analyze(ticker, amount, type, username) {
   if (!ticker) return json({ message: '❓ Ticker required.\nExample: BUY AMZN 100' });
   amount = amount || 100;
-  const closes = fetchPrices(ticker);
+  const closes  = fetchPrices(ticker);
   if (closes.length < 21) return json({ message: '⚠️ Not enough price history for ' + ticker });
   const { current, mean, zScore, rsi } = calcIndicators(closes);
+  const profile  = getProfile(username);
   const fee      = Math.max(amount * 0.003, 0.10);
-  const zOk      = zScore < -1.5;
-  const rsiOk    = rsi < 35;
+  const zOk      = zScore < profile.zBuy;
+  const rsiOk    = rsi < profile.rBuy;
   const target   = Math.min(mean, current * 1.03);
   const stopLoss = current * 0.98;
   const netRet   = ((target - current) / current * 100 - fee * 2 / amount * 100).toFixed(2);
   const signal   = (zOk && rsiOk) ? '🟢 GOOD TO BUY' : (zOk || rsiOk) ? '🟡 MIXED SIGNALS' : '🔴 NOT YET';
+
+  // Friendly signal bar
+  const driftBar = zScore < -3 ? '████░' : zScore < -2 ? '███░░' : zScore < -1 ? '██░░░' : zScore < 0 ? '█░░░░' : '░░░░░';
+  const momBar   = rsi < 20 ? '████░' : rsi < 30 ? '███░░' : rsi < 40 ? '██░░░' : rsi < 50 ? '█░░░░' : '░░░░░';
+
   return json({
     type: 'BUY', ticker, current, mean: +mean.toFixed(2), zScore: +zScore.toFixed(2),
     rsi: +rsi.toFixed(1), zOk, rsiOk, fee: +fee.toFixed(2), target: +target.toFixed(2),
-    stopLoss: +stopLoss.toFixed(2), netReturn: +netRet, signal: zOk && rsiOk ? 'GOOD_BUY' : zOk || rsiOk ? 'MIXED' : 'NOT_YET', amount,
+    stopLoss: +stopLoss.toFixed(2), netReturn: +netRet,
+    signal: zOk && rsiOk ? 'GOOD_BUY' : zOk || rsiOk ? 'MIXED' : 'NOT_YET', amount,
     message:
 `📊 BUY CHECK: ${ticker}
 ─────────────────────
 Trade:   $${amount.toFixed(2)}
 Current: $${current.toFixed(2)}
-20d avg: $${mean.toFixed(2)}
-
-Z-Score: ${zScore.toFixed(2)} ${zOk  ? '✅' : '❌'} (need < -1.5)
-RSI(14): ${rsi.toFixed(1)}  ${rsiOk ? '✅' : '❌'} (need < 35)
+Average: $${mean.toFixed(2)}
+Profile: ${profile.label}
+─────────────────────
+Price Drift  [${driftBar}] ${zOk ? '✅' : '❌'}
+Momentum     [${momBar}] ${rsiOk ? '✅' : '❌'}
 ─────────────────────
 Fee:       $${fee.toFixed(2)} (GoTrade 0.3%)
 Target:    $${target.toFixed(2)}
@@ -521,9 +607,10 @@ function analyzeSell(ticker, amount, username) {
   const closes = fetchPrices(ticker);
   if (closes.length < 21) return json({ message: '⚠️ Not enough price history for ' + ticker });
   const { current, mean, zScore, rsi } = calcIndicators(closes);
+  const profile  = getProfile(username);
   const fee     = Math.max(amount * 0.003, 0.10);
-  const zSell   = zScore > 1.5;
-  const rsiSell = rsi > 65;
+  const zSell   = zScore > profile.zSell;
+  const rsiSell = rsi > profile.rSell;
 
   let posLine = 'No recorded position for ' + ticker;
   let recommendation = '', signal = 'HOLD';
@@ -553,19 +640,22 @@ P&L:      ${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)} (${pnlPct.toFixed(1)}%) ${pnl
   }
 
   const sigLabel = signal === 'GOOD_SELL' ? '🟢 GOOD TO SELL' : signal === 'STOP_LOSS' ? '🛑 SELL NOW — STOP LOSS' : signal === 'MIXED' ? '🟡 MIXED SIGNALS' : '🔴 HOLD FOR NOW';
+  const driftBar = zScore > 3 ? '████░' : zScore > 2 ? '███░░' : zScore > 1 ? '██░░░' : zScore > 0 ? '█░░░░' : '░░░░░';
+  const momBar   = rsi > 80 ? '████░' : rsi > 70 ? '███░░' : rsi > 60 ? '██░░░' : rsi > 50 ? '█░░░░' : '░░░░░';
 
   return json({ type: 'SELL', ticker, current, mean: +mean.toFixed(2), zScore: +zScore.toFixed(2), rsi: +rsi.toFixed(1), signal, positionInfo,
     message:
 `📊 SELL CHECK: ${ticker}
 ─────────────────────
 Current: $${current.toFixed(2)}
-20d avg: $${mean.toFixed(2)}
+Average: $${mean.toFixed(2)}
+Profile: ${profile.label}
 
 Your position:
 ${posLine}
 ─────────────────────
-Z-Score: ${zScore.toFixed(2)} ${zSell   ? '✅' : '❌'} (need > +1.5)
-RSI(14): ${rsi.toFixed(1)}  ${rsiSell ? '✅' : '❌'} (need > 65)
+Price Drift  [${driftBar}] ${zSell   ? '✅' : '❌'}
+Momentum     [${momBar}] ${rsiSell ? '✅' : '❌'}
 ─────────────────────
 Fee:    $${fee.toFixed(2)} (GoTrade)
 Advice: ${recommendation}
@@ -733,7 +823,8 @@ function watchlistScan(username) {
       const closes = fetchPrices(ticker);
       if (closes.length < 21) { results.push({ ticker, error: 'Not enough data' }); continue; }
       const { current, mean, zScore, rsi } = calcIndicators(closes);
-      const zOk = zScore < -1.5, rsiOk = rsi < 35, zSell = zScore > 1.5, rsiSell = rsi > 65;
+      const prof = getProfile(username);
+      const zOk = zScore < prof.zBuy, rsiOk = rsi < prof.rBuy, zSell = zScore > prof.zSell, rsiSell = rsi > prof.rSell;
       let signal = 'HOLD';
       if      (zOk   && rsiOk)    signal = 'BUY';
       else if (zOk   || rsiOk)    signal = 'WEAK_BUY';
@@ -857,6 +948,35 @@ function updateSessionTgUsername(chatId, tgUsername) {
       }
     }
   } catch(e) { /* non-critical */ }
+}
+
+// ══════════════════════════════════════════════
+//  PROFILE COMMAND
+// ══════════════════════════════════════════════
+function promptProfile() {
+  return json({ message:
+`⚙️ RISK PROFILE
+
+Set how sensitive your buy/sell signals are.
+
+Choose your profile:
+
+🟢 PROFILE LOW
+  Conservative — only the strongest signals
+  Best for: beginners, long-term holders
+  More patient, fewer but safer signals
+
+🟡 PROFILE MEDIUM
+  Balanced — standard signals (default)
+  Best for: most investors
+  Good balance of opportunity and safety
+
+🔴 PROFILE HIGH
+  Aggressive — catches smaller moves
+  Best for: active traders
+  More signals, higher risk
+
+Type one of the above to set your profile.` });
 }
 
 // ══════════════════════════════════════════════
