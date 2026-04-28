@@ -500,12 +500,18 @@ function checkCredentials(username, password) {
     s.appendRow(['tanaka00', 'Q1w2_e3r4', 'AMZN,AAPL,NVDA']);
   }
 
-  const rows = s.getDataRange().getValues().slice(1);
+  const rows    = s.getDataRange().getValues().slice(1);
+  const headers = s.getDataRange().getValues()[0].map(h => String(h).trim().toLowerCase());
+  const uCol  = Math.max(headers.indexOf('username'), 0);
+  const pCol  = headers.indexOf('password') >= 0 ? headers.indexOf('password') : 1;
+  const wCol  = headers.indexOf('watchlist') >= 0 ? headers.indexOf('watchlist') : 2;
+  const prCol = headers.indexOf('risk_profile');
   for (const r of rows) {
-    const u = String(r[0]).trim();
-    const p = String(r[1]).trim();
+    const u = String(r[uCol]).trim();
+    const p = String(r[pCol]).trim();
     if (u.toLowerCase() === String(username).trim().toLowerCase() && p === String(password).trim()) {
-      return { success: true, username: u, watchlist: String(r[2] || '') };
+      const profile = prCol >= 0 ? (String(r[prCol]).trim().toUpperCase() || 'MEDIUM') : 'MEDIUM';
+      return { success: true, username: u, watchlist: String(r[wCol] || ''), profile };
     }
   }
   return { success: false, message: 'Invalid username or password.' };

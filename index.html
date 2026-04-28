@@ -125,6 +125,11 @@ body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(
     <div class="topbar-logo">TANAKA // <span>STOCK</span></div>
     <div class="topbar-right">
       <div class="topbar-user">OPERATOR: <strong id="topbar-username"></strong></div>
+      <select id="profile-select" onchange="changeProfile(this.value)" title="Risk Profile" style="background:var(--bg);border:1px solid var(--border);color:var(--muted);font-family:var(--mono);font-size:10px;letter-spacing:1px;padding:5px 10px;outline:none;cursor:pointer;">
+        <option value="LOW">🟢 LOW RISK</option>
+        <option value="MEDIUM" selected>🟡 MEDIUM RISK</option>
+        <option value="HIGH">🔴 HIGH RISK</option>
+      </select>
       <button class="logout-btn" onclick="doLogout()">LOG OUT</button>
     </div>
   </div>
@@ -250,8 +255,9 @@ let currentUser='',watchlist=[],positions={};
 // ── Persist session in localStorage ──────────────────
 const LS_KEY = 'tanaka_session';
 
-function saveSession(username, wl) {
-  localStorage.setItem(LS_KEY, JSON.stringify({ username, watchlist: wl }));
+function saveSession(username, wl, profile) {
+  const current = loadSession() || {};
+  localStorage.setItem(LS_KEY, JSON.stringify({ username, watchlist: wl, profile: profile || current.profile || 'MEDIUM' }));
 }
 function loadSession() {
   try { return JSON.parse(localStorage.getItem(LS_KEY) || 'null'); } catch(e) { return null; }
@@ -269,6 +275,7 @@ window.addEventListener('load', () => {
     document.getElementById('login-screen').style.display = 'none';
     document.getElementById('dashboard').style.display    = 'block';
     document.getElementById('topbar-username').textContent = currentUser.toUpperCase();
+      if (saved.profile) document.getElementById('profile-select').value = saved.profile;
     renderWatchlistChips();
     loadPositions();
   }
@@ -295,7 +302,9 @@ async function doLogin(){
       // ✅ Success — redirect to dashboard
       currentUser=data.username;
       watchlist=data.watchlist?data.watchlist.split(',').map(t=>t.trim()).filter(Boolean):[];
-      saveSession(currentUser, watchlist);
+      const profile=data.profile||'MEDIUM';
+      saveSession(currentUser, watchlist, profile);
+      document.getElementById('profile-select').value=profile;
       err.style.display='none';
       document.getElementById('login-screen').style.display='none';
       document.getElementById('dashboard').style.display='block';
@@ -352,6 +361,25 @@ async function runBuy(){
   setLoading('res-buy','btn-buy');
   try{const d=await callAPI('BUY '+ticker+' '+amount+' '+currentUser);showResult('res-buy','btn-buy',d.message);addHistory('buy','BUY '+ticker+' $'+amount,d.message);}
   catch(e){showResult('res-buy','btn-buy','⚠️ '+e.message);}
+}
+
+async function changeProfile(key) {
+  const sel = document.getElementById('profile-select');
+  sel.disabled = true;
+  try {
+    const d = await callAPI('PROFILE ' + key + ' ' + currentUser);
+    if (d.message && d.message.includes('✅')) {
+      // Save profile to localStorage
+      const s = loadSession();
+      if (s) { s.profile = key; saveSession(s.username, s.watchlist, key); }
+    } else {
+      alert(d.message || 'Failed to update profile');
+      // Revert select
+      const s = loadSession();
+      sel.value = s && s.profile ? s.profile : 'MEDIUM';
+    }
+  } catch(e) { alert('Error: ' + e.message); }
+  sel.disabled = false;
 }
 
 async function loadPositions(){
