@@ -600,22 +600,33 @@ function getUsersSheet() {
 }
 
 function getUserRow(sheet, username) {
-  const rows = sheet.getDataRange().getValues();
+  const rows    = sheet.getDataRange().getValues();
+  const headers = rows[0].map(h => String(h).trim().toLowerCase());
+  const uCol    = headers.indexOf('username');
+  const pCol    = headers.indexOf('password');
+  const wCol    = headers.indexOf('watchlist');
   for (let i = 1; i < rows.length; i++) {
-    if (String(rows[i][0]).trim() === String(username).trim()) return { row: i + 1, data: rows[i] };
+    if (String(rows[i][uCol >= 0 ? uCol : 0]).trim().toLowerCase() === String(username).trim().toLowerCase()) {
+      return { row: i + 1, data: rows[i], uCol, pCol, wCol: wCol >= 0 ? wCol : 2 };
+    }
   }
   return null;
+}
+
+function getWatchlist(found) {
+  const wCol = found.wCol >= 0 ? found.wCol : 2;
+  return (found.data[wCol] || '').toString().split(',').map(t => t.trim()).filter(Boolean);
 }
 
 function watchlistAdd(username, ticker) {
   if (!ticker) return promptWatchlist();
   const sheet = getUsersSheet();
   const found = getUserRow(sheet, username);
-  if (!found) return json({ message: '⚠️ User not found: ' + username });
-  const list = (found.data[2] || '').toString().split(',').map(t => t.trim()).filter(Boolean);
-  if (!list.includes(ticker)) list.push(ticker);
-  sheet.getRange(found.row, 3).setValue(list.join(','));
-  return json({ message: `✅ Added ${ticker} to watchlist.\n\nWatchlist: ${list.join(', ')}`, watchlist: list });
+  if (!found) return json({ message: '⚠️ User not found: ' + username + '\n\nCheck the users sheet.' });
+  const list = getWatchlist(found);
+  if (!list.includes(ticker.toUpperCase())) list.push(ticker.toUpperCase());
+  sheet.getRange(found.row, found.wCol + 1).setValue(list.join(','));
+  return json({ message: '✅ Added ' + ticker + ' to watchlist.\n\nWatchlist: ' + list.join(', '), watchlist: list });
 }
 
 function watchlistRemove(username, ticker) {
@@ -623,24 +634,24 @@ function watchlistRemove(username, ticker) {
   const sheet = getUsersSheet();
   const found = getUserRow(sheet, username);
   if (!found) return json({ message: '⚠️ User not found: ' + username });
-  const list = (found.data[2] || '').toString().split(',').map(t => t.trim()).filter(t => t && t !== ticker);
-  sheet.getRange(found.row, 3).setValue(list.join(','));
-  return json({ message: `✅ Removed ${ticker}.\n\nWatchlist: ${list.join(', ') || 'empty'}`, watchlist: list });
+  const list = getWatchlist(found).filter(t => t !== ticker.toUpperCase());
+  sheet.getRange(found.row, found.wCol + 1).setValue(list.join(','));
+  return json({ message: '✅ Removed ' + ticker + '.\n\nWatchlist: ' + (list.join(', ') || 'empty'), watchlist: list });
 }
 
 function watchlistList(username) {
   const sheet = getUsersSheet();
   const found = getUserRow(sheet, username);
   if (!found) return json({ message: '⚠️ User not found.' });
-  const list = (found.data[2] || '').toString().split(',').map(t => t.trim()).filter(Boolean);
-  return json({ message: `📋 Watchlist:\n${list.length ? list.join(', ') : 'empty'}\n\nWATCHLIST SCAN to analyze all`, watchlist: list });
+  const list = getWatchlist(found);
+  return json({ message: '📋 Watchlist:\n' + (list.length ? list.join(', ') : 'empty') + '\n\nWATCHLIST SCAN to analyze all', watchlist: list });
 }
 
 function watchlistScan(username) {
   const sheet = getUsersSheet();
   const found = getUserRow(sheet, username);
   if (!found) return json({ message: '⚠️ User not found.' });
-  const list = (found.data[2] || '').toString().split(',').map(t => t.trim()).filter(Boolean);
+  const list = getWatchlist(found);
   if (!list.length) return json({ message: '📋 Watchlist is empty.\n\nWATCHLIST ADD AMZN', results: [] });
 
   const results = [];
