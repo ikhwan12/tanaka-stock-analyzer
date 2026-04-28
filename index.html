@@ -3,160 +3,381 @@
 <head>
 <meta charset="UTF-8"/>
 <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
-<title>TANAKA // US Stock Terminal</title>
-<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&display=swap" rel="stylesheet"/>
+<title>Tanaka Stock Terminal</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet"/>
 <style>
-:root{--bg:#080a0f;--panel:#0d1017;--border:#1a2030;--accent:#00ff88;--accent2:#0088ff;--red:#ff3b5c;--yellow:#ffc93c;--orange:#ff8c42;--text:#e8eaf0;--muted:#4a5568;--mono:'Space Mono',monospace;--sans:'Syne',sans-serif;}
+/* ── TOKENS ─────────────────────────────── */
+:root {
+  --bg:       #13151a;
+  --surface:  #1c1f27;
+  --surface2: #252932;
+  --border:   #2e3340;
+  --border2:  #3a4055;
+
+  --text:     #edf0f7;
+  --text2:    #9aa3b8;
+  --text3:    #5e6880;
+
+  --green:  #2dd4a0;
+  --blue:   #4f9ef8;
+  --red:    #f2657a;
+  --yellow: #f5c842;
+  --orange: #f5883a;
+
+  --mono: 'IBM Plex Mono', monospace;
+  --sans: 'IBM Plex Sans', sans-serif;
+  --r:    8px;
+}
+
+/* ── RESET ──────────────────────────────── */
 *{margin:0;padding:0;box-sizing:border-box;}
-body{background:var(--bg);color:var(--text);font-family:var(--mono);min-height:100vh;overflow-x:hidden;}
-body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(rgba(0,255,136,.03) 1px,transparent 1px),linear-gradient(90deg,rgba(0,255,136,.03) 1px,transparent 1px);background-size:40px 40px;pointer-events:none;z-index:0;}
-#login-screen{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;z-index:100;background:var(--bg);}
-.login-box{width:100%;max-width:420px;padding:48px;border:1px solid var(--border);background:var(--panel);position:relative;animation:fadeUp .6s ease;}
-.login-box::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,var(--accent),var(--accent2));}
-.login-logo{font-family:var(--sans);font-size:11px;font-weight:800;letter-spacing:6px;color:var(--muted);text-transform:uppercase;margin-bottom:8px;}
-.login-title{font-family:var(--sans);font-size:28px;font-weight:800;margin-bottom:6px;line-height:1.1;}
-.login-title span{color:var(--accent);}
-.login-sub{font-size:11px;color:var(--muted);margin-bottom:40px;letter-spacing:1px;}
+body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:15px;line-height:1.6;min-height:100vh;-webkit-font-smoothing:antialiased;}
+
+/* ── LOGIN ──────────────────────────────── */
+#login-screen{
+  position:fixed;inset:0;display:flex;align-items:center;justify-content:center;
+  background:var(--bg);z-index:100;
+  background-image:radial-gradient(ellipse 60% 50% at 50% 0%, rgba(45,212,160,.08), transparent);
+}
+.login-wrap{width:100%;max-width:440px;padding:24px;}
+
+.login-brand{display:flex;align-items:center;gap:10px;margin-bottom:40px;}
+.login-brand-icon{
+  width:40px;height:40px;background:var(--green);border-radius:10px;
+  display:flex;align-items:center;justify-content:center;font-size:20px;
+}
+.login-brand-name{font-family:var(--sans);font-size:18px;font-weight:700;color:var(--text);}
+.login-brand-sub{font-size:13px;color:var(--text3);}
+
+.login-card{
+  background:var(--surface);border:1px solid var(--border);
+  border-radius:16px;padding:36px;
+}
+.login-title{font-size:26px;font-weight:700;color:var(--text);margin-bottom:6px;}
+.login-subtitle{font-size:15px;color:var(--text2);margin-bottom:32px;}
+
 .field{margin-bottom:20px;}
-.field label{display:block;font-size:10px;letter-spacing:2px;color:var(--muted);text-transform:uppercase;margin-bottom:8px;}
-.field input{width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);font-family:var(--mono);font-size:14px;padding:12px 16px;outline:none;transition:border-color .2s;}
-.field input:focus{border-color:var(--accent);}
-.login-btn{width:100%;padding:14px;background:var(--accent);color:var(--bg);font-family:var(--mono);font-size:12px;font-weight:700;letter-spacing:3px;text-transform:uppercase;border:none;cursor:pointer;margin-top:8px;}
+.field label{display:block;font-size:13px;font-weight:600;color:var(--text2);margin-bottom:8px;letter-spacing:.3px;}
+.field input{
+  width:100%;background:var(--bg);border:1.5px solid var(--border);
+  border-radius:var(--r);color:var(--text);font-family:var(--mono);font-size:15px;
+  padding:13px 16px;outline:none;transition:border-color .15s;
+}
+.field input:focus{border-color:var(--green);}
+.field input::placeholder{color:var(--text3);}
+
+.login-btn{
+  width:100%;padding:14px;background:var(--green);color:#0d1a14;
+  font-family:var(--sans);font-size:15px;font-weight:700;
+  border:none;border-radius:var(--r);cursor:pointer;transition:opacity .15s;
+  margin-top:4px;
+}
+.login-btn:hover{opacity:.9;}
 .login-btn:disabled{opacity:.5;cursor:not-allowed;}
-.login-error{font-size:12px;color:var(--red);margin-top:12px;letter-spacing:1px;padding:10px 14px;border:1px solid var(--red);background:rgba(255,59,92,.08);display:none;}
-#dashboard{display:none;min-height:100vh;position:relative;z-index:1;}
-.topbar{display:flex;align-items:center;justify-content:space-between;padding:16px 32px;border-bottom:1px solid var(--border);background:var(--panel);position:sticky;top:0;z-index:50;}
-.topbar-logo{font-family:var(--sans);font-size:13px;font-weight:800;letter-spacing:4px;}
-.topbar-logo span{color:var(--accent);}
-.topbar-right{display:flex;align-items:center;gap:24px;}
-.topbar-user{font-size:11px;color:var(--muted);letter-spacing:1px;}
-.topbar-user strong{color:var(--accent);}
-.logout-btn{font-family:var(--mono);font-size:10px;letter-spacing:2px;color:var(--muted);background:none;border:1px solid var(--border);padding:6px 14px;cursor:pointer;text-transform:uppercase;}
+.login-error{
+  font-size:14px;color:var(--red);margin-top:14px;padding:12px 16px;
+  background:rgba(242,101,122,.1);border:1px solid rgba(242,101,122,.3);
+  border-radius:var(--r);display:none;
+}
+
+/* ── SHELL ──────────────────────────────── */
+#dashboard{display:none;min-height:100vh;flex-direction:column;}
+#dashboard.show{display:flex;}
+
+/* ── TOPBAR ─────────────────────────────── */
+.topbar{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:0 28px;height:60px;
+  background:var(--surface);border-bottom:1px solid var(--border);
+  position:sticky;top:0;z-index:50;gap:16px;
+}
+.topbar-brand{display:flex;align-items:center;gap:10px;flex-shrink:0;}
+.topbar-icon{width:32px;height:32px;background:var(--green);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:16px;}
+.topbar-name{font-size:16px;font-weight:700;color:var(--text);}
+
+.topbar-right{display:flex;align-items:center;gap:12px;flex-wrap:wrap;justify-content:flex-end;}
+.topbar-user{font-size:14px;color:var(--text2);white-space:nowrap;}
+.topbar-user strong{color:var(--green);font-weight:600;}
+
+.profile-select{
+  background:var(--surface2);border:1.5px solid var(--border);border-radius:6px;
+  color:var(--text);font-family:var(--sans);font-size:13px;font-weight:500;
+  padding:6px 10px;outline:none;cursor:pointer;
+}
+.logout-btn{
+  background:transparent;border:1.5px solid var(--border);border-radius:6px;
+  color:var(--text2);font-family:var(--sans);font-size:13px;font-weight:500;
+  padding:6px 14px;cursor:pointer;transition:all .15s;white-space:nowrap;
+}
 .logout-btn:hover{border-color:var(--red);color:var(--red);}
-.tabs{display:flex;border-bottom:1px solid var(--border);background:var(--panel);padding:0 32px;overflow-x:auto;}
-.tab{padding:14px 20px;font-family:var(--mono);font-size:11px;letter-spacing:2px;text-transform:uppercase;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;white-space:nowrap;}
-.tab.active{color:var(--accent);border-bottom-color:var(--accent);}
+
+/* ── TABS ───────────────────────────────── */
+.tabs{
+  display:flex;background:var(--surface);border-bottom:1px solid var(--border);
+  padding:0 28px;overflow-x:auto;gap:4px;flex-shrink:0;
+}
+.tabs::-webkit-scrollbar{display:none;}
+.tab{
+  padding:14px 20px;font-size:14px;font-weight:500;color:var(--text3);
+  cursor:pointer;border-bottom:2px solid transparent;white-space:nowrap;
+  transition:all .15s;user-select:none;
+}
+.tab:hover{color:var(--text2);}
+.tab.active{color:var(--text);border-bottom-color:var(--green);}
 .tab.t-sell.active{color:var(--red);border-bottom-color:var(--red);}
 .tab.t-update.active{color:var(--yellow);border-bottom-color:var(--yellow);}
-.tab.t-check.active{color:var(--accent2);border-bottom-color:var(--accent2);}
+.tab.t-check.active{color:var(--blue);border-bottom-color:var(--blue);}
 .tab.t-watchlist.active{color:var(--orange);border-bottom-color:var(--orange);}
-.tab.t-balance.active{color:var(--accent);border-bottom-color:var(--accent);}
-.main{display:grid;grid-template-columns:1fr 340px;min-height:calc(100vh - 113px);}
-.left-panel{padding:32px;border-right:1px solid var(--border);}
-.right-panel{padding:28px;background:var(--panel);}
+.tab.t-balance.active{color:var(--green);border-bottom-color:var(--green);}
+
+/* ── LAYOUT ─────────────────────────────── */
+.body-wrap{
+  display:grid;grid-template-columns:1fr 320px;
+  flex:1;min-height:0;
+}
+.main-panel{padding:28px;overflow-y:auto;}
+.side-panel{background:var(--surface);border-left:1px solid var(--border);padding:24px;overflow-y:auto;}
+
 .tab-content{display:none;}
-.tab-content.active{display:block;animation:fadeUp .3s ease;}
+.tab-content.active{display:block;animation:fadeIn .2s ease;}
+
+/* ── SECTION HEADER ─────────────────────── */
 .section-header{display:flex;align-items:center;gap:12px;margin-bottom:24px;}
-.section-tag{font-size:9px;letter-spacing:3px;color:var(--accent);text-transform:uppercase;border:1px solid var(--accent);padding:3px 8px;}
-.section-title{font-family:var(--sans);font-size:20px;font-weight:800;}
-.form-area{border:1px solid var(--border);padding:24px;}
-.form-row{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;}
+.section-badge{
+  font-size:11px;font-weight:600;letter-spacing:.6px;text-transform:uppercase;
+  padding:4px 10px;border-radius:4px;
+}
+.badge-green{background:rgba(45,212,160,.15);color:var(--green);}
+.badge-red{background:rgba(242,101,122,.15);color:var(--red);}
+.badge-yellow{background:rgba(245,200,66,.15);color:var(--yellow);}
+.badge-blue{background:rgba(79,158,248,.15);color:var(--blue);}
+.badge-orange{background:rgba(245,136,58,.15);color:var(--orange);}
+.section-title{font-size:22px;font-weight:700;color:var(--text);}
+
+/* ── CARD / FORM ────────────────────────── */
+.card{background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:24px;}
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:16px;}
 .form-row.full{grid-template-columns:1fr;}
 .form-row.three{grid-template-columns:1fr 1fr 1fr;}
-.input-group label{display:block;font-size:9px;letter-spacing:2px;color:var(--muted);text-transform:uppercase;margin-bottom:6px;}
-.input-group input,.input-group select{width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);font-family:var(--mono);font-size:13px;padding:10px 12px;outline:none;text-transform:uppercase;}
-.run-btn{width:100%;padding:13px;font-family:var(--mono);font-size:11px;font-weight:700;letter-spacing:3px;text-transform:uppercase;border:none;cursor:pointer;margin-top:4px;}
-.run-btn:disabled{opacity:.4;cursor:not-allowed;}
-.run-btn.buy{background:var(--accent);color:var(--bg);}
-.run-btn.sell{background:var(--red);color:#fff;}
-.run-btn.upd{background:var(--yellow);color:var(--bg);}
-.run-btn.chk{background:var(--accent2);color:#fff;}
-.run-btn.wl{background:var(--orange);color:var(--bg);}
-.result-box{margin-top:20px;background:var(--bg);border:1px solid var(--border);padding:20px;font-size:12px;line-height:1.9;white-space:pre-wrap;word-break:break-word;min-height:60px;display:none;position:relative;}
-.result-box.show{display:block;animation:fadeUp .3s ease;}
-.result-box.loading{display:block;}
-.result-box.loading::after{content:'FETCHING DATA...';position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:10px;letter-spacing:3px;color:var(--accent);background:var(--bg);animation:pulse 1s infinite;}
-.positions-title{font-size:10px;letter-spacing:2px;color:var(--muted);text-transform:uppercase;margin-bottom:10px;}
-.pos-row{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border:1px solid var(--border);cursor:pointer;margin-bottom:6px;font-size:11px;}
-.pos-row:hover{border-color:var(--red);background:rgba(255,59,92,.04);}
-.pos-row.selected{border-color:var(--red);background:rgba(255,59,92,.07);}
-.pos-ticker{font-family:var(--sans);font-weight:800;font-size:14px;}
-.pos-pnl.up{color:var(--accent);}
-.pos-pnl.down{color:var(--red);}
-.no-positions{font-size:11px;color:var(--muted);text-align:center;padding:20px;border:1px dashed var(--border);}
-.wl-add-row{display:flex;gap:8px;margin-bottom:16px;}
-.wl-add-row input{flex:1;background:var(--bg);border:1px solid var(--border);color:var(--text);font-family:var(--mono);font-size:13px;padding:10px 12px;outline:none;text-transform:uppercase;}
-.wl-chips{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:20px;min-height:36px;}
-.wl-chip{display:flex;align-items:center;gap:6px;background:rgba(255,140,66,.1);border:1px solid var(--orange);padding:5px 12px;font-size:11px;color:var(--orange);}
-.wl-chip button{background:none;border:none;color:var(--orange);cursor:pointer;font-size:14px;line-height:1;}
-.wl-scan-table{width:100%;border-collapse:collapse;font-size:11px;}
-.wl-scan-table th{text-align:left;padding:8px 10px;font-size:9px;letter-spacing:2px;color:var(--muted);text-transform:uppercase;border-bottom:1px solid var(--border);}
-.wl-scan-table td{padding:10px 10px;border-bottom:1px solid rgba(26,32,48,.5);}
-.sig-badge{display:inline-block;padding:3px 8px;font-size:9px;letter-spacing:1px;font-weight:700;}
-.sig-badge.BUY{background:rgba(0,255,136,.15);color:var(--accent);}
-.sig-badge.WEAK_BUY{background:rgba(255,201,60,.1);color:var(--yellow);}
-.sig-badge.SELL{background:rgba(255,59,92,.15);color:var(--red);}
-.sig-badge.WEAK_SELL{background:rgba(255,140,66,.15);color:var(--orange);}
-.sig-badge.HOLD,.sig-badge.default{background:rgba(74,85,104,.2);color:var(--muted);}
-.history-header{font-size:9px;letter-spacing:3px;color:var(--muted);text-transform:uppercase;margin-bottom:16px;padding-bottom:10px;border-bottom:1px solid var(--border);}
-.history-list{display:flex;flex-direction:column;gap:8px;max-height:calc(100vh - 220px);overflow-y:auto;}
-.history-list::-webkit-scrollbar{width:2px;}
-.history-list::-webkit-scrollbar-thumb{background:var(--border);}
-.history-item{border:1px solid var(--border);padding:14px;font-size:11px;animation:fadeUp .3s ease;line-height:1.7;}
-.history-item .h-cmd{font-family:var(--sans);font-weight:800;font-size:12px;margin-bottom:4px;}
-.history-item.buy-h .h-cmd{color:var(--accent);}
-.history-item.sell-h .h-cmd{color:var(--red);}
-.history-item.upd-h .h-cmd{color:var(--yellow);}
-.history-item.chk-h .h-cmd{color:var(--accent2);}
-.history-item.wl-h .h-cmd{color:var(--orange);}
-.h-time{font-size:9px;color:var(--muted);letter-spacing:1px;margin-bottom:6px;}
-.h-result{color:var(--muted);font-size:10px;white-space:pre-wrap;max-height:80px;overflow:hidden;-webkit-mask-image:linear-gradient(to bottom,black 50%,transparent 100%);}
-.empty-history{font-size:11px;color:var(--muted);text-align:center;padding:40px 0;border:1px dashed var(--border);}
-@keyframes fadeUp{from{opacity:0;transform:translateY(12px);}to{opacity:1;transform:translateY(0);}}
+
+.form-group label{display:block;font-size:13px;font-weight:600;color:var(--text2);margin-bottom:8px;}
+.form-group input,
+.form-group select{
+  width:100%;background:var(--bg);border:1.5px solid var(--border);
+  border-radius:var(--r);color:var(--text);font-family:var(--mono);font-size:15px;
+  padding:12px 14px;outline:none;transition:border-color .15s;
+}
+.form-group input:focus{border-color:var(--green);}
+.form-group input::placeholder{color:var(--text3);}
+.form-group select{cursor:pointer;font-family:var(--sans);}
+
+/* ── BUTTONS ────────────────────────────── */
+.btn{
+  width:100%;padding:14px;font-family:var(--sans);font-size:15px;font-weight:600;
+  border:none;border-radius:var(--r);cursor:pointer;margin-top:6px;
+  transition:opacity .15s,transform .1s;
+}
+.btn:hover{opacity:.9;}
+.btn:active{transform:scale(.99);}
+.btn:disabled{opacity:.4;cursor:not-allowed;}
+.btn-green{background:var(--green);color:#0d1a14;}
+.btn-red{background:var(--red);color:#fff;}
+.btn-yellow{background:var(--yellow);color:#1a1500;}
+.btn-blue{background:var(--blue);color:#fff;}
+.btn-orange{background:var(--orange);color:#fff;}
+.btn-outline{background:transparent;border:1.5px solid var(--border);color:var(--text2);}
+.btn-outline:hover{border-color:var(--orange);color:var(--orange);opacity:1;}
+
+/* ── RESULT BOX ─────────────────────────── */
+.result-box{
+  margin-top:18px;background:var(--bg);border:1px solid var(--border);
+  border-radius:var(--r);padding:20px;font-family:var(--mono);font-size:14px;
+  line-height:1.8;white-space:pre-wrap;word-break:break-word;color:var(--text);
+  display:none;
+}
+.result-box.show{display:block;animation:fadeIn .2s ease;}
+.result-box.loading{display:block;color:var(--text3);}
+.result-box.loading::after{
+  content:'Fetching data...';display:block;
+  animation:pulse 1s ease infinite;
+}
+
+/* ── POSITIONS (SELL TAB) ───────────────── */
+.positions-label{font-size:13px;font-weight:600;color:var(--text2);margin-bottom:10px;letter-spacing:.3px;}
+.pos-card{
+  display:flex;align-items:center;justify-content:space-between;
+  background:var(--bg);border:1.5px solid var(--border);border-radius:var(--r);
+  padding:14px 16px;margin-bottom:8px;cursor:pointer;transition:all .15s;
+}
+.pos-card:hover{border-color:var(--border2);}
+.pos-card.selected{border-color:var(--red);background:rgba(242,101,122,.06);}
+.pos-ticker{font-size:17px;font-weight:700;color:var(--text);}
+.pos-meta{font-size:13px;color:var(--text3);margin-top:2px;}
+.pos-pnl{font-size:14px;font-weight:600;text-align:right;}
+.pos-pnl.up{color:var(--green);}
+.pos-pnl.dn{color:var(--red);}
+.pos-empty{font-size:14px;color:var(--text3);text-align:center;padding:24px;background:var(--bg);border:1px dashed var(--border);border-radius:var(--r);}
+
+/* ── WATCHLIST ──────────────────────────── */
+.wl-add-row{display:flex;gap:10px;margin-bottom:18px;}
+.wl-add-row input{
+  flex:1;background:var(--bg);border:1.5px solid var(--border);border-radius:var(--r);
+  color:var(--text);font-family:var(--mono);font-size:15px;padding:12px 14px;outline:none;
+  text-transform:uppercase;
+}
+.wl-add-row input:focus{border-color:var(--orange);}
+.wl-add-row .btn{width:auto;padding:12px 22px;margin-top:0;}
+.chips{display:flex;flex-wrap:wrap;gap:8px;min-height:38px;margin-bottom:18px;}
+.chip{
+  display:flex;align-items:center;gap:7px;
+  background:rgba(245,136,58,.12);border:1px solid rgba(245,136,58,.35);
+  border-radius:6px;padding:6px 12px;font-size:14px;font-weight:600;color:var(--orange);
+}
+.chip button{background:none;border:none;color:var(--orange);cursor:pointer;font-size:16px;line-height:1;padding:0;opacity:.7;}
+.chip button:hover{opacity:1;}
+.wl-table{width:100%;border-collapse:collapse;margin-top:16px;}
+.wl-table th{
+  text-align:left;padding:10px 12px;font-size:12px;font-weight:600;
+  letter-spacing:.5px;text-transform:uppercase;color:var(--text3);
+  border-bottom:1px solid var(--border);
+}
+.wl-table td{padding:13px 12px;font-size:15px;border-bottom:1px solid rgba(46,51,64,.5);}
+.wl-table tr:last-child td{border-bottom:none;}
+.wl-table tr:hover td{background:rgba(255,255,255,.02);}
+.sig{display:inline-block;padding:4px 10px;border-radius:4px;font-size:12px;font-weight:700;letter-spacing:.4px;}
+.sig.BUY{background:rgba(45,212,160,.15);color:var(--green);}
+.sig.WEAK_BUY{background:rgba(245,200,66,.12);color:var(--yellow);}
+.sig.SELL{background:rgba(242,101,122,.15);color:var(--red);}
+.sig.WEAK_SELL{background:rgba(245,136,58,.15);color:var(--orange);}
+.sig.HOLD{background:rgba(94,104,128,.2);color:var(--text3);}
+
+/* ── BALANCE ────────────────────────────── */
+.balance-display{
+  background:var(--bg);border:1px solid var(--border);border-radius:12px;
+  padding:24px 28px;margin-bottom:20px;
+}
+.balance-label{font-size:13px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px;}
+.balance-amount{font-size:40px;font-weight:700;font-family:var(--mono);color:var(--green);}
+
+/* ── SIDEBAR / HISTORY ──────────────────── */
+.side-label{font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.6px;color:var(--text3);margin-bottom:16px;padding-bottom:12px;border-bottom:1px solid var(--border);}
+.hist-list{display:flex;flex-direction:column;gap:8px;}
+.hist-item{
+  background:var(--surface2);border:1px solid var(--border);border-radius:var(--r);
+  padding:14px;animation:fadeIn .2s ease;
+}
+.hist-cmd{font-size:14px;font-weight:700;margin-bottom:4px;}
+.hist-time{font-size:12px;color:var(--text3);margin-bottom:6px;}
+.hist-snippet{font-size:12px;color:var(--text3);font-family:var(--mono);white-space:pre-wrap;max-height:72px;overflow:hidden;-webkit-mask-image:linear-gradient(black 50%,transparent);}
+.hist-item.buy  .hist-cmd{color:var(--green);}
+.hist-item.sell .hist-cmd{color:var(--red);}
+.hist-item.upd  .hist-cmd{color:var(--yellow);}
+.hist-item.chk  .hist-cmd{color:var(--blue);}
+.hist-item.wl   .hist-cmd{color:var(--orange);}
+.hist-empty{font-size:14px;color:var(--text3);text-align:center;padding:32px 0;}
+
+/* ── ANIMATIONS ─────────────────────────── */
+@keyframes fadeIn{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:translateY(0);}}
 @keyframes pulse{0%,100%{opacity:1;}50%{opacity:.4;}}
-@media(max-width:768px){.main{grid-template-columns:1fr;}.left-panel,.right-panel{padding:20px;}.tabs{padding:0 12px;}.topbar{padding:14px 16px;}}
+
+/* ── RESPONSIVE ─────────────────────────── */
+@media(max-width:860px){
+  .body-wrap{grid-template-columns:1fr;}
+  .side-panel{display:none;}
+  .topbar{padding:0 16px;}
+  .tabs{padding:0 16px;}
+  .main-panel{padding:20px 16px;}
+  .form-row.three{grid-template-columns:1fr 1fr;}
+}
+@media(max-width:480px){
+  .form-row{grid-template-columns:1fr;}
+  .form-row.three{grid-template-columns:1fr;}
+  .topbar-user{display:none;}
+}
 </style>
 </head>
 <body>
 
+<!-- ══ LOGIN ══════════════════════════════ -->
 <div id="login-screen">
-  <div class="login-box">
-    <div class="login-logo">Tanaka Capital</div>
-    <div class="login-title">US Stock<br/><span>Terminal</span></div>
-    <div class="login-sub">// AUTHORIZED ACCESS ONLY</div>
-    <div class="field"><label>Username</label><input type="text" id="l-user" autocomplete="off" placeholder="username"/></div>
-    <div class="field"><label>Password</label><input type="password" id="l-pass" placeholder="••••••••"/></div>
-    <button class="login-btn" id="login-btn" onclick="doLogin()">INITIALIZE SESSION →</button>
-    <div class="login-error" id="login-error"></div>
+  <div class="login-wrap">
+    <div class="login-brand">
+      <div class="login-brand-icon">📊</div>
+      <div>
+        <div class="login-brand-name">Tanaka Stock Terminal</div>
+        <div class="login-brand-sub">Personal US Stock Analyzer</div>
+      </div>
+    </div>
+    <div class="login-card">
+      <div class="login-title">Welcome back</div>
+      <div class="login-subtitle">Sign in to access your portfolio</div>
+      <div class="field">
+        <label>Username</label>
+        <input type="text" id="l-user" autocomplete="off" placeholder="your username"/>
+      </div>
+      <div class="field">
+        <label>Password</label>
+        <input type="password" id="l-pass" placeholder="••••••••"/>
+      </div>
+      <button class="login-btn" id="login-btn" onclick="doLogin()">Sign In</button>
+      <div class="login-error" id="login-error"></div>
+    </div>
   </div>
 </div>
 
+<!-- ══ DASHBOARD ═══════════════════════════ -->
 <div id="dashboard">
+
+  <!-- TOPBAR -->
   <div class="topbar">
-    <div class="topbar-logo">TANAKA // <span>STOCK</span></div>
+    <div class="topbar-brand">
+      <div class="topbar-icon">📊</div>
+      <div class="topbar-name">Tanaka Stock</div>
+    </div>
     <div class="topbar-right">
-      <div class="topbar-user">OPERATOR: <strong id="topbar-username"></strong></div>
-      <select id="profile-select" onchange="changeProfile(this.value)" title="Risk Profile" style="background:var(--bg);border:1px solid var(--border);color:var(--muted);font-family:var(--mono);font-size:10px;letter-spacing:1px;padding:5px 10px;outline:none;cursor:pointer;">
-        <option value="LOW">🟢 LOW RISK</option>
-        <option value="MEDIUM" selected>🟡 MEDIUM RISK</option>
-        <option value="HIGH">🔴 HIGH RISK</option>
+      <div class="topbar-user">Signed in as <strong id="topbar-username"></strong></div>
+      <select id="profile-select" class="profile-select" onchange="changeProfile(this.value)" title="Risk Profile">
+        <option value="LOW">🟢 Low Risk</option>
+        <option value="MEDIUM" selected>🟡 Medium Risk</option>
+        <option value="HIGH">🔴 High Risk</option>
       </select>
-      <button class="logout-btn" onclick="doLogout()">LOG OUT</button>
+      <button class="logout-btn" onclick="doLogout()">Sign Out</button>
     </div>
   </div>
+
+  <!-- TABS -->
   <div class="tabs">
-    <div class="tab t-buy active" onclick="switchTab('buy')">📈 BUY</div>
-    <div class="tab t-sell" onclick="switchTab('sell')">📉 SELL</div>
-    <div class="tab t-update" onclick="switchTab('update')">📝 UPDATE</div>
-    <div class="tab t-check" onclick="switchTab('check')">💼 CHECK</div>
-    <div class="tab t-watchlist" onclick="switchTab('watchlist')">📡 WATCHLIST</div>
-    <div class="tab t-balance" onclick="switchTab('balance')">💰 BALANCE</div>
+    <div class="tab t-buy active"      onclick="switchTab('buy')">📈 BUY</div>
+    <div class="tab t-sell"            onclick="switchTab('sell')">📉 SELL</div>
+    <div class="tab t-update"          onclick="switchTab('update')">📝 UPDATE</div>
+    <div class="tab t-check"           onclick="switchTab('check')">💼 CHECK</div>
+    <div class="tab t-watchlist"       onclick="switchTab('watchlist')">📡 WATCHLIST</div>
+    <div class="tab t-balance"         onclick="switchTab('balance')">💰 BALANCE</div>
   </div>
-  <div class="main">
-    <div class="left-panel">
+
+  <!-- BODY -->
+  <div class="body-wrap">
+    <div class="main-panel">
 
       <!-- BUY -->
       <div class="tab-content active" id="tc-buy">
         <div class="section-header">
-          <div class="section-tag">BUY</div>
-          <div class="section-title">Analyze Buy Signal</div>
+          <span class="section-badge badge-green">Analysis</span>
+          <h2 class="section-title">Buy Signal Check</h2>
         </div>
-        <div class="form-area">
+        <div class="card">
           <div class="form-row">
-            <div class="input-group"><label>Ticker</label><input type="text" id="buy-ticker" placeholder="AMZN" maxlength="6"/></div>
-            <div class="input-group"><label>Amount (USD)</label><input type="number" id="buy-amount" value="100" min="1"/></div>
+            <div class="form-group">
+              <label>Ticker Symbol</label>
+              <input type="text" id="buy-ticker" placeholder="AMZN" maxlength="6"/>
+            </div>
+            <div class="form-group">
+              <label>Amount (USD)</label>
+              <input type="number" id="buy-amount" value="100" min="1"/>
+            </div>
           </div>
-          <button class="run-btn buy" id="btn-buy" onclick="runBuy()">▶ RUN BUY ANALYSIS</button>
+          <button class="btn btn-green" id="btn-buy" onclick="runBuy()">▶ Run Buy Analysis</button>
           <div class="result-box" id="res-buy"></div>
         </div>
       </div>
@@ -164,17 +385,25 @@ body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(
       <!-- SELL -->
       <div class="tab-content" id="tc-sell">
         <div class="section-header">
-          <div class="section-tag" style="color:var(--red);border-color:var(--red)">SELL</div>
-          <div class="section-title">Smart Sell Analysis</div>
+          <span class="section-badge badge-red">Analysis</span>
+          <h2 class="section-title">Smart Sell Check</h2>
         </div>
-        <div class="form-area">
-          <div class="positions-title">// YOUR POSITIONS — tap to auto-fill</div>
-          <div id="positions-list" style="margin-bottom:16px;"><div class="no-positions">Loading positions...</div></div>
-          <div class="form-row">
-            <div class="input-group"><label>Ticker</label><input type="text" id="sell-ticker" placeholder="AMZN" maxlength="6"/></div>
-            <div class="input-group"><label>Amount (USD)</label><input type="number" id="sell-amount" value="100" min="1"/></div>
+        <div class="card">
+          <div class="positions-label">Your positions — tap to select</div>
+          <div id="positions-list" style="margin-bottom:18px;">
+            <div class="pos-empty">Loading positions…</div>
           </div>
-          <button class="run-btn sell" id="btn-sell" onclick="runSell()">▶ SMART SELL ANALYSIS</button>
+          <div class="form-row">
+            <div class="form-group">
+              <label>Ticker Symbol</label>
+              <input type="text" id="sell-ticker" placeholder="AMZN" maxlength="6"/>
+            </div>
+            <div class="form-group">
+              <label>Amount (USD)</label>
+              <input type="number" id="sell-amount" value="100" min="1"/>
+            </div>
+          </div>
+          <button class="btn btn-red" id="btn-sell" onclick="runSell()">▶ Run Sell Analysis</button>
           <div class="result-box" id="res-sell"></div>
         </div>
       </div>
@@ -182,23 +411,34 @@ body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(
       <!-- UPDATE -->
       <div class="tab-content" id="tc-update">
         <div class="section-header">
-          <div class="section-tag" style="color:var(--yellow);border-color:var(--yellow)">UPDATE</div>
-          <div class="section-title">Record a Trade</div>
+          <span class="section-badge badge-yellow">Portfolio</span>
+          <h2 class="section-title">Record a Trade</h2>
         </div>
-        <div class="form-area">
+        <div class="card">
           <div class="form-row three">
-            <div class="input-group"><label>Ticker</label><input type="text" id="upd-ticker" placeholder="AMZN" maxlength="6"/></div>
-            <div class="input-group"><label>Amount (USD)</label><input type="number" id="upd-amount" placeholder="100"/></div>
-            <div class="input-group"><label>Price / share</label><input type="number" id="upd-price" placeholder="185.20" step="0.01"/></div>
+            <div class="form-group">
+              <label>Ticker</label>
+              <input type="text" id="upd-ticker" placeholder="AMZN" maxlength="6"/>
+            </div>
+            <div class="form-group">
+              <label>Amount (USD)</label>
+              <input type="number" id="upd-amount" placeholder="100"/>
+            </div>
+            <div class="form-group">
+              <label>Price / Share</label>
+              <input type="number" id="upd-price" placeholder="185.20" step="0.01"/>
+            </div>
           </div>
           <div class="form-row full">
-            <div class="input-group"><label>Trade Type</label>
-              <select id="upd-type" style="background:var(--bg);border:1px solid var(--border);color:var(--text);font-family:var(--mono);font-size:13px;padding:10px 12px;outline:none;width:100%;">
-                <option value="B">BUY</option><option value="S">SELL</option>
+            <div class="form-group">
+              <label>Trade Type</label>
+              <select id="upd-type">
+                <option value="B">Buy</option>
+                <option value="S">Sell</option>
               </select>
             </div>
           </div>
-          <button class="run-btn upd" id="btn-upd" onclick="runUpdate()">▶ RECORD TRADE</button>
+          <button class="btn btn-yellow" id="btn-upd" onclick="runUpdate()">▶ Record Trade</button>
           <div class="result-box" id="res-upd"></div>
         </div>
       </div>
@@ -206,75 +446,80 @@ body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(
       <!-- CHECK -->
       <div class="tab-content" id="tc-check">
         <div class="section-header">
-          <div class="section-tag" style="color:var(--accent2);border-color:var(--accent2)">CHECK</div>
-          <div class="section-title">Portfolio Overview</div>
+          <span class="section-badge badge-blue">Portfolio</span>
+          <h2 class="section-title">Portfolio Overview</h2>
         </div>
-        <div class="form-area">
-          <p style="font-size:11px;color:var(--muted);margin-bottom:16px;">Fetches live prices and calculates your current P&amp;L across all holdings.</p>
-          <button class="run-btn chk" id="btn-chk" onclick="runCheck()">▶ LOAD PORTFOLIO</button>
-          <div class="result-box" id="res-chk"></div>
-        </div>
-      </div>
-
-      <!-- BALANCE -->
-      <div class="tab-content" id="tc-balance">
-        <div class="section-header">
-          <div class="section-tag" style="color:var(--accent);border-color:var(--accent)">BALANCE</div>
-          <div class="section-title">Initial Balance</div>
-        </div>
-        <div class="form-area">
-          <p style="font-size:11px;color:var(--muted);margin-bottom:20px;line-height:1.8;">
-            Set your starting capital. This is used to calculate your overall portfolio performance 
-            and show your total return % from day one.
+        <div class="card">
+          <p style="font-size:15px;color:var(--text2);margin-bottom:18px;line-height:1.7;">
+            Fetches live prices and shows your current holdings, P&amp;L, and total performance.
           </p>
-          <div id="balance-current" style="background:var(--bg);border:1px solid var(--border);padding:16px 20px;margin-bottom:20px;font-size:13px;">
-            <span style="color:var(--muted);font-size:10px;letter-spacing:2px;">CURRENT BALANCE</span><br/>
-            <span id="balance-display" style="font-size:24px;font-family:var(--sans);font-weight:800;color:var(--accent);">$0.00</span>
-          </div>
-          <div class="form-row full">
-            <div class="input-group">
-              <label>Set New Initial Balance (USD)</label>
-              <input type="number" id="balance-input" placeholder="e.g. 1000" min="0" step="0.01"/>
-            </div>
-          </div>
-          <button class="run-btn buy" id="btn-balance" onclick="runSetBalance()">▶ UPDATE BALANCE</button>
-          <div class="result-box" id="res-balance"></div>
+          <button class="btn btn-blue" id="btn-chk" onclick="runCheck()">▶ Load Portfolio</button>
+          <div class="result-box" id="res-chk"></div>
         </div>
       </div>
 
       <!-- WATCHLIST -->
       <div class="tab-content" id="tc-watchlist">
         <div class="section-header">
-          <div class="section-tag" style="color:var(--orange);border-color:var(--orange)">WATCHLIST</div>
-          <div class="section-title">Scan All Tickers</div>
+          <span class="section-badge badge-orange">Watchlist</span>
+          <h2 class="section-title">Scan All Tickers</h2>
         </div>
-        <div class="form-area">
-          <div class="positions-title">// ADD TICKER</div>
+        <div class="card">
+          <div class="positions-label">Add ticker to watchlist</div>
           <div class="wl-add-row">
-            <input type="text" id="wl-new-ticker" placeholder="e.g. NVDA" maxlength="6" onkeydown="if(event.key==='Enter')addToWatchlist()"/>
-            <button class="run-btn wl" onclick="addToWatchlist()" style="width:auto;padding:10px 20px;margin-top:0;">+ ADD</button>
+            <input type="text" id="wl-new-ticker" placeholder="e.g. NVDA" maxlength="6"
+                   onkeydown="if(event.key==='Enter')addToWatchlist()"/>
+            <button class="btn btn-orange" onclick="addToWatchlist()">+ Add</button>
           </div>
-          <div class="positions-title">// CURRENT WATCHLIST</div>
-          <div class="wl-chips" id="wl-chips"></div>
-          <button class="run-btn wl" id="btn-wl-scan" onclick="runWatchlistScan()">▶ SCAN ALL — ANALYZE SIGNALS</button>
-          <div id="wl-scan-result" style="margin-top:20px;display:none;">
-            <table class="wl-scan-table">
-              <thead><tr><th>Ticker</th><th>Price</th><th>Z-Score</th><th>RSI</th><th>Signal</th></tr></thead>
+          <div class="positions-label">Current watchlist</div>
+          <div class="chips" id="wl-chips"></div>
+          <button class="btn btn-orange" id="btn-wl-scan" onclick="runWatchlistScan()">▶ Scan All — Analyze Signals</button>
+          <div id="wl-scan-result" style="display:none;margin-top:20px;">
+            <table class="wl-table">
+              <thead><tr><th>Ticker</th><th>Price</th><th>Signal</th></tr></thead>
               <tbody id="wl-scan-body"></tbody>
             </table>
           </div>
         </div>
       </div>
 
-    </div>
-    <div class="right-panel">
-      <div class="history-header">// SESSION LOG</div>
-      <div class="history-list" id="history-list">
-        <div class="empty-history">NO COMMANDS YET<br/>// RUN A COMMAND TO BEGIN</div>
+      <!-- BALANCE -->
+      <div class="tab-content" id="tc-balance">
+        <div class="section-header">
+          <span class="section-badge badge-green">Settings</span>
+          <h2 class="section-title">Initial Balance</h2>
+        </div>
+        <div class="card">
+          <p style="font-size:15px;color:var(--text2);margin-bottom:22px;line-height:1.7;">
+            Set your starting capital. Used to calculate your overall portfolio return from day one.
+          </p>
+          <div class="balance-display">
+            <div class="balance-label">Current Balance</div>
+            <div class="balance-amount" id="balance-display">$0.00</div>
+          </div>
+          <div class="form-row full">
+            <div class="form-group">
+              <label>Set New Initial Balance (USD)</label>
+              <input type="number" id="balance-input" placeholder="e.g. 1000" min="0" step="0.01"/>
+            </div>
+          </div>
+          <button class="btn btn-green" id="btn-balance" onclick="runSetBalance()">▶ Update Balance</button>
+          <div class="result-box" id="res-balance"></div>
+        </div>
+      </div>
+
+    </div><!-- /main-panel -->
+
+    <!-- SIDEBAR -->
+    <div class="side-panel">
+      <div class="side-label">Session Log</div>
+      <div class="hist-list" id="history-list">
+        <div class="hist-empty">No commands yet.<br/>Run an analysis to begin.</div>
       </div>
     </div>
-  </div>
-</div>
+
+  </div><!-- /body-wrap -->
+</div><!-- /dashboard -->
 
 <script>
 const API='/api/query';
@@ -414,7 +659,7 @@ async function changeProfile(key) {
 
 async function loadPositions(){
   const list=document.getElementById('positions-list');
-  list.innerHTML='<div class="no-positions" style="color:var(--muted)">Loading...</div>';
+  list.innerHTML='<div class="pos-empty">Loading positions…</div>';
   try{
     const data=await callAPI('POSITIONS '+currentUser);
     positions={};
@@ -423,17 +668,17 @@ async function loadPositions(){
       data.positions.forEach(p=>{
         positions[p.ticker]=p;
         const div=document.createElement('div');
-        div.className='pos-row';
+        div.className='pos-card';
         div.onclick=()=>selectPosition(p.ticker,div,p);
-        div.innerHTML='<div><div class="pos-ticker">'+p.ticker+'</div><div style="font-size:10px;color:var(--muted)">'+p.shares+' shares @ $'+p.avgCost+'</div></div><div class="pos-pnl '+(p.pnl>=0?'up':'down')+'">'+(p.pnl>=0?'+':'')+'$'+p.pnl+' ('+p.pnlPct+'%)</div>';
+        div.innerHTML='<div><div class="pos-ticker">'+p.ticker+'</div><div style="font-size:10px;color:var(--muted)">'+p.shares+' shares @ $'+p.avgCost+'</div></div><div class="pos-pnl '+(p.pnl>=0?'up':'dn')+'">'+(p.pnl>=0?'+':'')+'$'+p.pnl+' ('+p.pnlPct+'%)</div>';
         list.appendChild(div);
       });
-    }else{list.innerHTML='<div class="no-positions">No positions recorded yet</div>';}
-  }catch(e){list.innerHTML='<div class="no-positions">⚠️ Could not load positions</div>';}
+    }else{list.innerHTML='<div class="pos-empty">No positions recorded yet.</div>';}
+  }catch(e){list.innerHTML='<div class="pos-empty">⚠️ Could not load positions.</div>';}
 }
 
 function selectPosition(ticker,el,p){
-  document.querySelectorAll('.pos-row').forEach(r=>r.classList.remove('selected'));
+  document.querySelectorAll('.pos-card').forEach(r=>r.classList.remove('selected'));
   el.classList.add('selected');
   document.getElementById('sell-ticker').value=ticker;
   document.getElementById('sell-amount').value=p.value?Math.round(p.value):100;
@@ -467,7 +712,7 @@ async function runCheck(){
 
 function renderWatchlistChips(){
   const c=document.getElementById('wl-chips');
-  c.innerHTML=watchlist.length===0?'<span style="font-size:11px;color:var(--muted)">No tickers yet</span>':watchlist.map(t=>'<div class="wl-chip">'+t+'<button onclick="removeFromWatchlist(\''+t+'\')">×</button></div>').join('');
+  c.innerHTML=watchlist.length===0?'<span style="font-size:14px;color:var(--text3)">No tickers yet — add one above.</span>':watchlist.map(t=>'<div class="wl-chip">'+t+'<button onclick="removeFromWatchlist(\''+t+'\')">×</button></div>').join('');
 }
 
 // ── Fetch live watchlist from GAS (sync with Telegram changes) ──
@@ -532,8 +777,8 @@ async function runWatchlistScan(){
         const tr=document.createElement('tr');
         if(r.error){tr.innerHTML='<td style="font-weight:700">'+r.ticker+'</td><td colspan="4"><span class="sig-badge HOLD">⚠️ '+r.error+'</span></td>';}
         else{
-          const labels={BUY:'🟢 BUY',WEAK_BUY:'🟡 WEAK BUY',SELL:'🔴 SELL',WEAK_SELL:'🟠 WEAK SELL',HOLD:'⚪ HOLD'};
-          tr.innerHTML='<td style="font-weight:700;font-family:var(--sans)">'+r.ticker+'</td><td>$'+r.current+'</td><td>'+r.zScore+'</td><td>'+r.rsi+'</td><td><span class="sig-badge '+r.signal+'">'+(labels[r.signal]||r.signal)+'</span></td>';
+          const labels={BUY:'BUY',WEAK_BUY:'WEAK BUY',SELL:'SELL',WEAK_SELL:'WEAK SELL',HOLD:'HOLD'};
+          tr.innerHTML='<td style="font-weight:700">'+r.ticker+'</td><td>$'+r.current+'</td><td><span class="sig '+r.signal+'">'+(labels[r.signal]||r.signal)+'</span></td>';
         }
         body.appendChild(tr);
       });
@@ -558,4 +803,3 @@ function addHistory(type,label,result){
 </script>
 </body>
 </html>
-<!-- v1.1 -->

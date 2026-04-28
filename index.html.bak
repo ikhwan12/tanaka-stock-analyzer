@@ -1,0 +1,561 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>TANAKA // US Stock Terminal</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&display=swap" rel="stylesheet"/>
+<style>
+:root{--bg:#080a0f;--panel:#0d1017;--border:#1a2030;--accent:#00ff88;--accent2:#0088ff;--red:#ff3b5c;--yellow:#ffc93c;--orange:#ff8c42;--text:#e8eaf0;--muted:#4a5568;--mono:'Space Mono',monospace;--sans:'Syne',sans-serif;}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{background:var(--bg);color:var(--text);font-family:var(--mono);min-height:100vh;overflow-x:hidden;}
+body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(rgba(0,255,136,.03) 1px,transparent 1px),linear-gradient(90deg,rgba(0,255,136,.03) 1px,transparent 1px);background-size:40px 40px;pointer-events:none;z-index:0;}
+#login-screen{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;z-index:100;background:var(--bg);}
+.login-box{width:100%;max-width:420px;padding:48px;border:1px solid var(--border);background:var(--panel);position:relative;animation:fadeUp .6s ease;}
+.login-box::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,var(--accent),var(--accent2));}
+.login-logo{font-family:var(--sans);font-size:11px;font-weight:800;letter-spacing:6px;color:var(--muted);text-transform:uppercase;margin-bottom:8px;}
+.login-title{font-family:var(--sans);font-size:28px;font-weight:800;margin-bottom:6px;line-height:1.1;}
+.login-title span{color:var(--accent);}
+.login-sub{font-size:11px;color:var(--muted);margin-bottom:40px;letter-spacing:1px;}
+.field{margin-bottom:20px;}
+.field label{display:block;font-size:10px;letter-spacing:2px;color:var(--muted);text-transform:uppercase;margin-bottom:8px;}
+.field input{width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);font-family:var(--mono);font-size:14px;padding:12px 16px;outline:none;transition:border-color .2s;}
+.field input:focus{border-color:var(--accent);}
+.login-btn{width:100%;padding:14px;background:var(--accent);color:var(--bg);font-family:var(--mono);font-size:12px;font-weight:700;letter-spacing:3px;text-transform:uppercase;border:none;cursor:pointer;margin-top:8px;}
+.login-btn:disabled{opacity:.5;cursor:not-allowed;}
+.login-error{font-size:12px;color:var(--red);margin-top:12px;letter-spacing:1px;padding:10px 14px;border:1px solid var(--red);background:rgba(255,59,92,.08);display:none;}
+#dashboard{display:none;min-height:100vh;position:relative;z-index:1;}
+.topbar{display:flex;align-items:center;justify-content:space-between;padding:16px 32px;border-bottom:1px solid var(--border);background:var(--panel);position:sticky;top:0;z-index:50;}
+.topbar-logo{font-family:var(--sans);font-size:13px;font-weight:800;letter-spacing:4px;}
+.topbar-logo span{color:var(--accent);}
+.topbar-right{display:flex;align-items:center;gap:24px;}
+.topbar-user{font-size:11px;color:var(--muted);letter-spacing:1px;}
+.topbar-user strong{color:var(--accent);}
+.logout-btn{font-family:var(--mono);font-size:10px;letter-spacing:2px;color:var(--muted);background:none;border:1px solid var(--border);padding:6px 14px;cursor:pointer;text-transform:uppercase;}
+.logout-btn:hover{border-color:var(--red);color:var(--red);}
+.tabs{display:flex;border-bottom:1px solid var(--border);background:var(--panel);padding:0 32px;overflow-x:auto;}
+.tab{padding:14px 20px;font-family:var(--mono);font-size:11px;letter-spacing:2px;text-transform:uppercase;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;white-space:nowrap;}
+.tab.active{color:var(--accent);border-bottom-color:var(--accent);}
+.tab.t-sell.active{color:var(--red);border-bottom-color:var(--red);}
+.tab.t-update.active{color:var(--yellow);border-bottom-color:var(--yellow);}
+.tab.t-check.active{color:var(--accent2);border-bottom-color:var(--accent2);}
+.tab.t-watchlist.active{color:var(--orange);border-bottom-color:var(--orange);}
+.tab.t-balance.active{color:var(--accent);border-bottom-color:var(--accent);}
+.main{display:grid;grid-template-columns:1fr 340px;min-height:calc(100vh - 113px);}
+.left-panel{padding:32px;border-right:1px solid var(--border);}
+.right-panel{padding:28px;background:var(--panel);}
+.tab-content{display:none;}
+.tab-content.active{display:block;animation:fadeUp .3s ease;}
+.section-header{display:flex;align-items:center;gap:12px;margin-bottom:24px;}
+.section-tag{font-size:9px;letter-spacing:3px;color:var(--accent);text-transform:uppercase;border:1px solid var(--accent);padding:3px 8px;}
+.section-title{font-family:var(--sans);font-size:20px;font-weight:800;}
+.form-area{border:1px solid var(--border);padding:24px;}
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px;}
+.form-row.full{grid-template-columns:1fr;}
+.form-row.three{grid-template-columns:1fr 1fr 1fr;}
+.input-group label{display:block;font-size:9px;letter-spacing:2px;color:var(--muted);text-transform:uppercase;margin-bottom:6px;}
+.input-group input,.input-group select{width:100%;background:var(--bg);border:1px solid var(--border);color:var(--text);font-family:var(--mono);font-size:13px;padding:10px 12px;outline:none;text-transform:uppercase;}
+.run-btn{width:100%;padding:13px;font-family:var(--mono);font-size:11px;font-weight:700;letter-spacing:3px;text-transform:uppercase;border:none;cursor:pointer;margin-top:4px;}
+.run-btn:disabled{opacity:.4;cursor:not-allowed;}
+.run-btn.buy{background:var(--accent);color:var(--bg);}
+.run-btn.sell{background:var(--red);color:#fff;}
+.run-btn.upd{background:var(--yellow);color:var(--bg);}
+.run-btn.chk{background:var(--accent2);color:#fff;}
+.run-btn.wl{background:var(--orange);color:var(--bg);}
+.result-box{margin-top:20px;background:var(--bg);border:1px solid var(--border);padding:20px;font-size:12px;line-height:1.9;white-space:pre-wrap;word-break:break-word;min-height:60px;display:none;position:relative;}
+.result-box.show{display:block;animation:fadeUp .3s ease;}
+.result-box.loading{display:block;}
+.result-box.loading::after{content:'FETCHING DATA...';position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:10px;letter-spacing:3px;color:var(--accent);background:var(--bg);animation:pulse 1s infinite;}
+.positions-title{font-size:10px;letter-spacing:2px;color:var(--muted);text-transform:uppercase;margin-bottom:10px;}
+.pos-row{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border:1px solid var(--border);cursor:pointer;margin-bottom:6px;font-size:11px;}
+.pos-row:hover{border-color:var(--red);background:rgba(255,59,92,.04);}
+.pos-row.selected{border-color:var(--red);background:rgba(255,59,92,.07);}
+.pos-ticker{font-family:var(--sans);font-weight:800;font-size:14px;}
+.pos-pnl.up{color:var(--accent);}
+.pos-pnl.down{color:var(--red);}
+.no-positions{font-size:11px;color:var(--muted);text-align:center;padding:20px;border:1px dashed var(--border);}
+.wl-add-row{display:flex;gap:8px;margin-bottom:16px;}
+.wl-add-row input{flex:1;background:var(--bg);border:1px solid var(--border);color:var(--text);font-family:var(--mono);font-size:13px;padding:10px 12px;outline:none;text-transform:uppercase;}
+.wl-chips{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:20px;min-height:36px;}
+.wl-chip{display:flex;align-items:center;gap:6px;background:rgba(255,140,66,.1);border:1px solid var(--orange);padding:5px 12px;font-size:11px;color:var(--orange);}
+.wl-chip button{background:none;border:none;color:var(--orange);cursor:pointer;font-size:14px;line-height:1;}
+.wl-scan-table{width:100%;border-collapse:collapse;font-size:11px;}
+.wl-scan-table th{text-align:left;padding:8px 10px;font-size:9px;letter-spacing:2px;color:var(--muted);text-transform:uppercase;border-bottom:1px solid var(--border);}
+.wl-scan-table td{padding:10px 10px;border-bottom:1px solid rgba(26,32,48,.5);}
+.sig-badge{display:inline-block;padding:3px 8px;font-size:9px;letter-spacing:1px;font-weight:700;}
+.sig-badge.BUY{background:rgba(0,255,136,.15);color:var(--accent);}
+.sig-badge.WEAK_BUY{background:rgba(255,201,60,.1);color:var(--yellow);}
+.sig-badge.SELL{background:rgba(255,59,92,.15);color:var(--red);}
+.sig-badge.WEAK_SELL{background:rgba(255,140,66,.15);color:var(--orange);}
+.sig-badge.HOLD,.sig-badge.default{background:rgba(74,85,104,.2);color:var(--muted);}
+.history-header{font-size:9px;letter-spacing:3px;color:var(--muted);text-transform:uppercase;margin-bottom:16px;padding-bottom:10px;border-bottom:1px solid var(--border);}
+.history-list{display:flex;flex-direction:column;gap:8px;max-height:calc(100vh - 220px);overflow-y:auto;}
+.history-list::-webkit-scrollbar{width:2px;}
+.history-list::-webkit-scrollbar-thumb{background:var(--border);}
+.history-item{border:1px solid var(--border);padding:14px;font-size:11px;animation:fadeUp .3s ease;line-height:1.7;}
+.history-item .h-cmd{font-family:var(--sans);font-weight:800;font-size:12px;margin-bottom:4px;}
+.history-item.buy-h .h-cmd{color:var(--accent);}
+.history-item.sell-h .h-cmd{color:var(--red);}
+.history-item.upd-h .h-cmd{color:var(--yellow);}
+.history-item.chk-h .h-cmd{color:var(--accent2);}
+.history-item.wl-h .h-cmd{color:var(--orange);}
+.h-time{font-size:9px;color:var(--muted);letter-spacing:1px;margin-bottom:6px;}
+.h-result{color:var(--muted);font-size:10px;white-space:pre-wrap;max-height:80px;overflow:hidden;-webkit-mask-image:linear-gradient(to bottom,black 50%,transparent 100%);}
+.empty-history{font-size:11px;color:var(--muted);text-align:center;padding:40px 0;border:1px dashed var(--border);}
+@keyframes fadeUp{from{opacity:0;transform:translateY(12px);}to{opacity:1;transform:translateY(0);}}
+@keyframes pulse{0%,100%{opacity:1;}50%{opacity:.4;}}
+@media(max-width:768px){.main{grid-template-columns:1fr;}.left-panel,.right-panel{padding:20px;}.tabs{padding:0 12px;}.topbar{padding:14px 16px;}}
+</style>
+</head>
+<body>
+
+<div id="login-screen">
+  <div class="login-box">
+    <div class="login-logo">Tanaka Capital</div>
+    <div class="login-title">US Stock<br/><span>Terminal</span></div>
+    <div class="login-sub">// AUTHORIZED ACCESS ONLY</div>
+    <div class="field"><label>Username</label><input type="text" id="l-user" autocomplete="off" placeholder="username"/></div>
+    <div class="field"><label>Password</label><input type="password" id="l-pass" placeholder="••••••••"/></div>
+    <button class="login-btn" id="login-btn" onclick="doLogin()">INITIALIZE SESSION →</button>
+    <div class="login-error" id="login-error"></div>
+  </div>
+</div>
+
+<div id="dashboard">
+  <div class="topbar">
+    <div class="topbar-logo">TANAKA // <span>STOCK</span></div>
+    <div class="topbar-right">
+      <div class="topbar-user">OPERATOR: <strong id="topbar-username"></strong></div>
+      <select id="profile-select" onchange="changeProfile(this.value)" title="Risk Profile" style="background:var(--bg);border:1px solid var(--border);color:var(--muted);font-family:var(--mono);font-size:10px;letter-spacing:1px;padding:5px 10px;outline:none;cursor:pointer;">
+        <option value="LOW">🟢 LOW RISK</option>
+        <option value="MEDIUM" selected>🟡 MEDIUM RISK</option>
+        <option value="HIGH">🔴 HIGH RISK</option>
+      </select>
+      <button class="logout-btn" onclick="doLogout()">LOG OUT</button>
+    </div>
+  </div>
+  <div class="tabs">
+    <div class="tab t-buy active" onclick="switchTab('buy')">📈 BUY</div>
+    <div class="tab t-sell" onclick="switchTab('sell')">📉 SELL</div>
+    <div class="tab t-update" onclick="switchTab('update')">📝 UPDATE</div>
+    <div class="tab t-check" onclick="switchTab('check')">💼 CHECK</div>
+    <div class="tab t-watchlist" onclick="switchTab('watchlist')">📡 WATCHLIST</div>
+    <div class="tab t-balance" onclick="switchTab('balance')">💰 BALANCE</div>
+  </div>
+  <div class="main">
+    <div class="left-panel">
+
+      <!-- BUY -->
+      <div class="tab-content active" id="tc-buy">
+        <div class="section-header">
+          <div class="section-tag">BUY</div>
+          <div class="section-title">Analyze Buy Signal</div>
+        </div>
+        <div class="form-area">
+          <div class="form-row">
+            <div class="input-group"><label>Ticker</label><input type="text" id="buy-ticker" placeholder="AMZN" maxlength="6"/></div>
+            <div class="input-group"><label>Amount (USD)</label><input type="number" id="buy-amount" value="100" min="1"/></div>
+          </div>
+          <button class="run-btn buy" id="btn-buy" onclick="runBuy()">▶ RUN BUY ANALYSIS</button>
+          <div class="result-box" id="res-buy"></div>
+        </div>
+      </div>
+
+      <!-- SELL -->
+      <div class="tab-content" id="tc-sell">
+        <div class="section-header">
+          <div class="section-tag" style="color:var(--red);border-color:var(--red)">SELL</div>
+          <div class="section-title">Smart Sell Analysis</div>
+        </div>
+        <div class="form-area">
+          <div class="positions-title">// YOUR POSITIONS — tap to auto-fill</div>
+          <div id="positions-list" style="margin-bottom:16px;"><div class="no-positions">Loading positions...</div></div>
+          <div class="form-row">
+            <div class="input-group"><label>Ticker</label><input type="text" id="sell-ticker" placeholder="AMZN" maxlength="6"/></div>
+            <div class="input-group"><label>Amount (USD)</label><input type="number" id="sell-amount" value="100" min="1"/></div>
+          </div>
+          <button class="run-btn sell" id="btn-sell" onclick="runSell()">▶ SMART SELL ANALYSIS</button>
+          <div class="result-box" id="res-sell"></div>
+        </div>
+      </div>
+
+      <!-- UPDATE -->
+      <div class="tab-content" id="tc-update">
+        <div class="section-header">
+          <div class="section-tag" style="color:var(--yellow);border-color:var(--yellow)">UPDATE</div>
+          <div class="section-title">Record a Trade</div>
+        </div>
+        <div class="form-area">
+          <div class="form-row three">
+            <div class="input-group"><label>Ticker</label><input type="text" id="upd-ticker" placeholder="AMZN" maxlength="6"/></div>
+            <div class="input-group"><label>Amount (USD)</label><input type="number" id="upd-amount" placeholder="100"/></div>
+            <div class="input-group"><label>Price / share</label><input type="number" id="upd-price" placeholder="185.20" step="0.01"/></div>
+          </div>
+          <div class="form-row full">
+            <div class="input-group"><label>Trade Type</label>
+              <select id="upd-type" style="background:var(--bg);border:1px solid var(--border);color:var(--text);font-family:var(--mono);font-size:13px;padding:10px 12px;outline:none;width:100%;">
+                <option value="B">BUY</option><option value="S">SELL</option>
+              </select>
+            </div>
+          </div>
+          <button class="run-btn upd" id="btn-upd" onclick="runUpdate()">▶ RECORD TRADE</button>
+          <div class="result-box" id="res-upd"></div>
+        </div>
+      </div>
+
+      <!-- CHECK -->
+      <div class="tab-content" id="tc-check">
+        <div class="section-header">
+          <div class="section-tag" style="color:var(--accent2);border-color:var(--accent2)">CHECK</div>
+          <div class="section-title">Portfolio Overview</div>
+        </div>
+        <div class="form-area">
+          <p style="font-size:11px;color:var(--muted);margin-bottom:16px;">Fetches live prices and calculates your current P&amp;L across all holdings.</p>
+          <button class="run-btn chk" id="btn-chk" onclick="runCheck()">▶ LOAD PORTFOLIO</button>
+          <div class="result-box" id="res-chk"></div>
+        </div>
+      </div>
+
+      <!-- BALANCE -->
+      <div class="tab-content" id="tc-balance">
+        <div class="section-header">
+          <div class="section-tag" style="color:var(--accent);border-color:var(--accent)">BALANCE</div>
+          <div class="section-title">Initial Balance</div>
+        </div>
+        <div class="form-area">
+          <p style="font-size:11px;color:var(--muted);margin-bottom:20px;line-height:1.8;">
+            Set your starting capital. This is used to calculate your overall portfolio performance 
+            and show your total return % from day one.
+          </p>
+          <div id="balance-current" style="background:var(--bg);border:1px solid var(--border);padding:16px 20px;margin-bottom:20px;font-size:13px;">
+            <span style="color:var(--muted);font-size:10px;letter-spacing:2px;">CURRENT BALANCE</span><br/>
+            <span id="balance-display" style="font-size:24px;font-family:var(--sans);font-weight:800;color:var(--accent);">$0.00</span>
+          </div>
+          <div class="form-row full">
+            <div class="input-group">
+              <label>Set New Initial Balance (USD)</label>
+              <input type="number" id="balance-input" placeholder="e.g. 1000" min="0" step="0.01"/>
+            </div>
+          </div>
+          <button class="run-btn buy" id="btn-balance" onclick="runSetBalance()">▶ UPDATE BALANCE</button>
+          <div class="result-box" id="res-balance"></div>
+        </div>
+      </div>
+
+      <!-- WATCHLIST -->
+      <div class="tab-content" id="tc-watchlist">
+        <div class="section-header">
+          <div class="section-tag" style="color:var(--orange);border-color:var(--orange)">WATCHLIST</div>
+          <div class="section-title">Scan All Tickers</div>
+        </div>
+        <div class="form-area">
+          <div class="positions-title">// ADD TICKER</div>
+          <div class="wl-add-row">
+            <input type="text" id="wl-new-ticker" placeholder="e.g. NVDA" maxlength="6" onkeydown="if(event.key==='Enter')addToWatchlist()"/>
+            <button class="run-btn wl" onclick="addToWatchlist()" style="width:auto;padding:10px 20px;margin-top:0;">+ ADD</button>
+          </div>
+          <div class="positions-title">// CURRENT WATCHLIST</div>
+          <div class="wl-chips" id="wl-chips"></div>
+          <button class="run-btn wl" id="btn-wl-scan" onclick="runWatchlistScan()">▶ SCAN ALL — ANALYZE SIGNALS</button>
+          <div id="wl-scan-result" style="margin-top:20px;display:none;">
+            <table class="wl-scan-table">
+              <thead><tr><th>Ticker</th><th>Price</th><th>Z-Score</th><th>RSI</th><th>Signal</th></tr></thead>
+              <tbody id="wl-scan-body"></tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+    </div>
+    <div class="right-panel">
+      <div class="history-header">// SESSION LOG</div>
+      <div class="history-list" id="history-list">
+        <div class="empty-history">NO COMMANDS YET<br/>// RUN A COMMAND TO BEGIN</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const API='/api/query';
+let currentUser='',watchlist=[],positions={};
+
+// ── Persist session in localStorage ──────────────────
+const LS_KEY = 'tanaka_session';
+
+function saveSession(username, wl, profile) {
+  const current = loadSession() || {};
+  localStorage.setItem(LS_KEY, JSON.stringify({ username, watchlist: wl, profile: profile || current.profile || 'MEDIUM' }));
+}
+function loadSession() {
+  try { return JSON.parse(localStorage.getItem(LS_KEY) || 'null'); } catch(e) { return null; }
+}
+function clearSession() {
+  localStorage.removeItem(LS_KEY);
+}
+
+// ── Auto-restore session on page load ────────────────
+window.addEventListener('load', () => {
+  const saved = loadSession();
+  if (saved && saved.username) {
+    currentUser = saved.username;
+    watchlist   = saved.watchlist || [];
+    document.getElementById('login-screen').style.display = 'none';
+    document.getElementById('dashboard').style.display    = 'block';
+    document.getElementById('topbar-username').textContent = currentUser.toUpperCase();
+      if (saved.profile) document.getElementById('profile-select').value = saved.profile;
+    renderWatchlistChips();
+    loadPositions();
+  }
+});
+
+document.addEventListener('keydown',e=>{if(e.key==='Enter'&&document.getElementById('login-screen').style.display!=='none')doLogin();});
+
+async function callAPI(msg){
+  const r=await fetch(API+'?message='+encodeURIComponent(msg));
+  if(!r.ok)throw new Error('HTTP '+r.status);
+  return r.json();
+}
+
+async function doLogin(){
+  const u=document.getElementById('l-user').value.trim();
+  const p=document.getElementById('l-pass').value;
+  const err=document.getElementById('login-error');
+  const btn=document.getElementById('login-btn');
+  if(!u||!p){err.textContent='⚠ Enter username and password';err.style.display='block';return;}
+  btn.disabled=true;btn.textContent='AUTHENTICATING...';
+  try{
+    const data=await callAPI('LOGIN '+u+' '+p);
+    if(data.success){
+      // ✅ Success — redirect to dashboard
+      currentUser=data.username;
+      watchlist=data.watchlist?data.watchlist.split(',').map(t=>t.trim()).filter(Boolean):[];
+      const profile=data.profile||'MEDIUM';
+      saveSession(currentUser, watchlist, profile);
+      document.getElementById('profile-select').value=profile;
+      err.style.display='none';
+      document.getElementById('login-screen').style.display='none';
+      document.getElementById('dashboard').style.display='block';
+      document.getElementById('topbar-username').textContent=currentUser.toUpperCase();
+      renderWatchlistChips();
+      loadPositions();
+    }else{
+      // ❌ Wrong credentials — show error, clear password
+      err.textContent='⚠ ' + (data.message || 'Invalid username or password.');
+      err.style.display='block';
+      document.getElementById('l-pass').value='';
+      document.getElementById('l-pass').focus();
+    }
+  }catch(e){
+    err.textContent='⚠ Network error — check your connection.';
+    err.style.display='block';
+  }
+  btn.disabled=false;btn.textContent='INITIALIZE SESSION →';
+}
+
+function doLogout(){
+  clearSession();
+  currentUser='';watchlist=[];positions={};
+  document.getElementById('login-screen').style.display='flex';
+  document.getElementById('dashboard').style.display='none';
+  document.getElementById('l-user').value='';document.getElementById('l-pass').value='';
+  document.getElementById('history-list').innerHTML='<div class="empty-history">NO COMMANDS YET<br/>// RUN A COMMAND TO BEGIN</div>';
+  switchTab('buy');
+}
+
+function switchTab(tab){
+  document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+  document.querySelectorAll('.tab-content').forEach(t=>t.classList.remove('active'));
+  document.querySelector('.tab.t-'+tab).classList.add('active');
+  document.getElementById('tc-'+tab).classList.add('active');
+  if(tab==='sell')loadPositions();
+  if(tab==='watchlist')loadWatchlistFromServer();
+  if(tab==='balance')loadBalance();
+}
+
+function setLoading(boxId,btnId){
+  const box=document.getElementById(boxId);
+  box.className='result-box loading';box.textContent='';
+  if(btnId)document.getElementById(btnId).disabled=true;
+}
+function showResult(boxId,btnId,text){
+  const box=document.getElementById(boxId);
+  box.className='result-box show';box.textContent=text;
+  if(btnId)document.getElementById(btnId).disabled=false;
+}
+
+async function runBuy(){
+  const ticker=document.getElementById('buy-ticker').value.trim().toUpperCase();
+  const amount=document.getElementById('buy-amount').value.trim();
+  if(!ticker||!amount)return alert('Enter ticker and amount');
+  setLoading('res-buy','btn-buy');
+  try{const d=await callAPI('BUY '+ticker+' '+amount+' '+currentUser);showResult('res-buy','btn-buy',d.message);addHistory('buy','BUY '+ticker+' $'+amount,d.message);}
+  catch(e){showResult('res-buy','btn-buy','⚠️ '+e.message);}
+}
+
+async function changeProfile(key) {
+  const sel = document.getElementById('profile-select');
+  sel.disabled = true;
+  try {
+    const d = await callAPI('PROFILE ' + key + ' ' + currentUser);
+    if (d.message && d.message.includes('✅')) {
+      // Save profile to localStorage
+      const s = loadSession();
+      if (s) { s.profile = key; saveSession(s.username, s.watchlist, key); }
+    } else {
+      alert(d.message || 'Failed to update profile');
+      // Revert select
+      const s = loadSession();
+      sel.value = s && s.profile ? s.profile : 'MEDIUM';
+    }
+  } catch(e) { alert('Error: ' + e.message); }
+  sel.disabled = false;
+}
+
+async function loadPositions(){
+  const list=document.getElementById('positions-list');
+  list.innerHTML='<div class="no-positions" style="color:var(--muted)">Loading...</div>';
+  try{
+    const data=await callAPI('POSITIONS '+currentUser);
+    positions={};
+    if(data.positions&&data.positions.length>0){
+      list.innerHTML='';
+      data.positions.forEach(p=>{
+        positions[p.ticker]=p;
+        const div=document.createElement('div');
+        div.className='pos-row';
+        div.onclick=()=>selectPosition(p.ticker,div,p);
+        div.innerHTML='<div><div class="pos-ticker">'+p.ticker+'</div><div style="font-size:10px;color:var(--muted)">'+p.shares+' shares @ $'+p.avgCost+'</div></div><div class="pos-pnl '+(p.pnl>=0?'up':'down')+'">'+(p.pnl>=0?'+':'')+'$'+p.pnl+' ('+p.pnlPct+'%)</div>';
+        list.appendChild(div);
+      });
+    }else{list.innerHTML='<div class="no-positions">No positions recorded yet</div>';}
+  }catch(e){list.innerHTML='<div class="no-positions">⚠️ Could not load positions</div>';}
+}
+
+function selectPosition(ticker,el,p){
+  document.querySelectorAll('.pos-row').forEach(r=>r.classList.remove('selected'));
+  el.classList.add('selected');
+  document.getElementById('sell-ticker').value=ticker;
+  document.getElementById('sell-amount').value=p.value?Math.round(p.value):100;
+}
+
+async function runSell(){
+  const ticker=document.getElementById('sell-ticker').value.trim().toUpperCase();
+  const amount=document.getElementById('sell-amount').value.trim();
+  if(!ticker||!amount)return alert('Enter ticker and amount');
+  setLoading('res-sell','btn-sell');
+  try{const d=await callAPI('SELL '+ticker+' '+amount+' '+currentUser);showResult('res-sell','btn-sell',d.message);addHistory('sell','SELL '+ticker+' $'+amount,d.message);}
+  catch(e){showResult('res-sell','btn-sell','⚠️ '+e.message);}
+}
+
+async function runUpdate(){
+  const ticker=document.getElementById('upd-ticker').value.trim().toUpperCase();
+  const amount=document.getElementById('upd-amount').value.trim();
+  const price=document.getElementById('upd-price').value.trim();
+  const type=document.getElementById('upd-type').value;
+  if(!ticker||!amount||!price)return alert('Fill in all fields');
+  setLoading('res-upd','btn-upd');
+  try{const d=await callAPI('UPDATE '+ticker+' '+type+amount+' '+price+' '+currentUser);showResult('res-upd','btn-upd',d.message);addHistory('upd','UPDATE '+ticker+' '+type+amount+' @$'+price,d.message);loadPositions();}
+  catch(e){showResult('res-upd','btn-upd','⚠️ '+e.message);}
+}
+
+async function runCheck(){
+  setLoading('res-chk','btn-chk');
+  try{const d=await callAPI('CHECK '+currentUser);showResult('res-chk','btn-chk',d.message);addHistory('chk','CHECK portfolio',d.message);}
+  catch(e){showResult('res-chk','btn-chk','⚠️ '+e.message);}
+}
+
+function renderWatchlistChips(){
+  const c=document.getElementById('wl-chips');
+  c.innerHTML=watchlist.length===0?'<span style="font-size:11px;color:var(--muted)">No tickers yet</span>':watchlist.map(t=>'<div class="wl-chip">'+t+'<button onclick="removeFromWatchlist(\''+t+'\')">×</button></div>').join('');
+}
+
+// ── Fetch live watchlist from GAS (sync with Telegram changes) ──
+async function loadWatchlistFromServer(){
+  try{
+    const d=await callAPI('WATCHLIST LIST '+currentUser);
+    if(d.watchlist && Array.isArray(d.watchlist)){
+      watchlist=d.watchlist;
+      saveSession(currentUser,watchlist,loadSession()&&loadSession().profile?loadSession().profile:'MEDIUM');
+      renderWatchlistChips();
+    }
+  }catch(e){}
+}
+
+// ── Balance functions ──
+async function loadBalance(){
+  try{
+    const d=await callAPI('BALANCE '+currentUser);
+    const bal=d.balance||0;
+    document.getElementById('balance-display').textContent='$'+bal.toFixed(2);
+    document.getElementById('balance-input').value=bal>0?bal:'';
+  }catch(e){}
+}
+
+async function runSetBalance(){
+  const val=parseFloat(document.getElementById('balance-input').value);
+  if(isNaN(val)||val<0)return alert('Enter a valid amount (e.g. 1000)');
+  setLoading('res-balance','btn-balance');
+  try{
+    // Web app format: BALANCE username amount
+    const d=await callAPI('BALANCE '+currentUser+' '+val.toFixed(2));
+    showResult('res-balance','btn-balance',d.message);
+    document.getElementById('balance-display').textContent='$'+val.toFixed(2);
+    addHistory('chk','SET BALANCE $'+val.toFixed(2),d.message);
+  }catch(e){showResult('res-balance','btn-balance','⚠️ '+e.message);}
+}
+
+async function addToWatchlist(){
+  const inp=document.getElementById('wl-new-ticker');
+  const ticker=inp.value.trim().toUpperCase();
+  if(!ticker||watchlist.includes(ticker)){inp.value='';return;}
+  try{const d=await callAPI('WATCHLIST ADD '+currentUser+' '+ticker);if(d.watchlist){watchlist=d.watchlist;saveSession(currentUser,watchlist);renderWatchlistChips();}}catch(e){}
+  inp.value='';
+}
+
+async function removeFromWatchlist(ticker){
+  try{const d=await callAPI('WATCHLIST REMOVE '+currentUser+' '+ticker);if(d.watchlist){watchlist=d.watchlist;saveSession(currentUser,watchlist);renderWatchlistChips();}}catch(e){}
+}
+
+async function runWatchlistScan(){
+  if(watchlist.length===0)return alert('Add tickers to watchlist first');
+  const btn=document.getElementById('btn-wl-scan');
+  const wrap=document.getElementById('wl-scan-result');
+  const body=document.getElementById('wl-scan-body');
+  btn.disabled=true;btn.textContent='⏳ SCANNING '+watchlist.length+' TICKERS...';
+  wrap.style.display='none';
+  try{
+    const d=await callAPI('WATCHLIST SCAN '+currentUser);
+    if(d.results){
+      body.innerHTML='';
+      d.results.forEach(r=>{
+        const tr=document.createElement('tr');
+        if(r.error){tr.innerHTML='<td style="font-weight:700">'+r.ticker+'</td><td colspan="4"><span class="sig-badge HOLD">⚠️ '+r.error+'</span></td>';}
+        else{
+          const labels={BUY:'🟢 BUY',WEAK_BUY:'🟡 WEAK BUY',SELL:'🔴 SELL',WEAK_SELL:'🟠 WEAK SELL',HOLD:'⚪ HOLD'};
+          tr.innerHTML='<td style="font-weight:700;font-family:var(--sans)">'+r.ticker+'</td><td>$'+r.current+'</td><td>'+r.zScore+'</td><td>'+r.rsi+'</td><td><span class="sig-badge '+r.signal+'">'+(labels[r.signal]||r.signal)+'</span></td>';
+        }
+        body.appendChild(tr);
+      });
+      wrap.style.display='block';
+      addHistory('wl','WATCHLIST SCAN ('+watchlist.length+')',d.message);
+    }
+  }catch(e){alert('⚠️ Scan failed: '+e.message);}
+  btn.disabled=false;btn.textContent='▶ SCAN ALL — ANALYZE SIGNALS';
+}
+
+function addHistory(type,label,result){
+  const list=document.getElementById('history-list');
+  if(list.querySelector('.empty-history'))list.innerHTML='';
+  const map={buy:'buy-h',sell:'sell-h',upd:'upd-h',chk:'chk-h',wl:'wl-h'};
+  const icons={buy:'📈 BUY',sell:'📉 SELL',upd:'📝 UPDATE',chk:'💼 CHECK',wl:'📡 WATCHLIST'};
+  const time=new Date().toLocaleTimeString('en-US',{hour12:false});
+  const item=document.createElement('div');
+  item.className='history-item '+(map[type]||'');
+  item.innerHTML='<div class="h-cmd">'+(icons[type]||type)+'</div><div class="h-time">// '+time+' — '+label+'</div><div class="h-result">'+(result||'')+'</div>';
+  list.insertBefore(item,list.firstChild);
+}
+</script>
+</body>
+</html>
+<!-- v1.1 -->
