@@ -247,6 +247,33 @@ body::before{content:'';position:fixed;inset:0;background-image:linear-gradient(
 const API='/api/query';
 let currentUser='',watchlist=[],positions={};
 
+// ── Persist session in localStorage ──────────────────
+const LS_KEY = 'tanaka_session';
+
+function saveSession(username, wl) {
+  localStorage.setItem(LS_KEY, JSON.stringify({ username, watchlist: wl }));
+}
+function loadSession() {
+  try { return JSON.parse(localStorage.getItem(LS_KEY) || 'null'); } catch(e) { return null; }
+}
+function clearSession() {
+  localStorage.removeItem(LS_KEY);
+}
+
+// ── Auto-restore session on page load ────────────────
+window.addEventListener('load', () => {
+  const saved = loadSession();
+  if (saved && saved.username) {
+    currentUser = saved.username;
+    watchlist   = saved.watchlist || [];
+    document.getElementById('login-screen').style.display = 'none';
+    document.getElementById('dashboard').style.display    = 'block';
+    document.getElementById('topbar-username').textContent = currentUser.toUpperCase();
+    renderWatchlistChips();
+    loadPositions();
+  }
+});
+
 document.addEventListener('keydown',e=>{if(e.key==='Enter'&&document.getElementById('login-screen').style.display!=='none')doLogin();});
 
 async function callAPI(msg){
@@ -267,6 +294,7 @@ async function doLogin(){
     if(data.success){
       currentUser=data.username;
       watchlist=data.watchlist?data.watchlist.split(',').map(t=>t.trim()).filter(Boolean):[];
+      saveSession(currentUser, watchlist);
       err.style.display='none';
       document.getElementById('login-screen').style.display='none';
       document.getElementById('dashboard').style.display='block';
@@ -278,6 +306,7 @@ async function doLogin(){
 }
 
 function doLogout(){
+  clearSession();
   currentUser='';watchlist=[];positions={};
   document.getElementById('login-screen').style.display='flex';
   document.getElementById('dashboard').style.display='none';
@@ -376,12 +405,12 @@ async function addToWatchlist(){
   const inp=document.getElementById('wl-new-ticker');
   const ticker=inp.value.trim().toUpperCase();
   if(!ticker||watchlist.includes(ticker)){inp.value='';return;}
-  try{const d=await callAPI('WATCHLIST ADD '+currentUser+' '+ticker);if(d.watchlist){watchlist=d.watchlist;renderWatchlistChips();}}catch(e){}
+  try{const d=await callAPI('WATCHLIST ADD '+currentUser+' '+ticker);if(d.watchlist){watchlist=d.watchlist;saveSession(currentUser,watchlist);renderWatchlistChips();}}catch(e){}
   inp.value='';
 }
 
 async function removeFromWatchlist(ticker){
-  try{const d=await callAPI('WATCHLIST REMOVE '+currentUser+' '+ticker);if(d.watchlist){watchlist=d.watchlist;renderWatchlistChips();}}catch(e){}
+  try{const d=await callAPI('WATCHLIST REMOVE '+currentUser+' '+ticker);if(d.watchlist){watchlist=d.watchlist;saveSession(currentUser,watchlist);renderWatchlistChips();}}catch(e){}
 }
 
 async function runWatchlistScan(){
