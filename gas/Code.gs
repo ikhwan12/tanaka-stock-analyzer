@@ -115,6 +115,7 @@ function handleMessage(raw, chatId, tgUsername, tgId) {
   if (cmd === 'START')    return sendWelcome(chatId, tgUsername);
   if (cmd === 'HELP')     return sendHelp(chatId);
   if (cmd === 'REGISTER') return sendRegisterInfo();
+  if (cmd === 'EXPLAIN')  return sendExplain(parts[1] || '');
   if (cmd === 'PROFILE')  { /* handled below with auth */ }
 
   // ── Menu taps with NO args → show instruction prompt ──
@@ -122,6 +123,7 @@ function handleMessage(raw, chatId, tgUsername, tgId) {
     if (cmd === 'LOGIN' || cmd === 'AUTH') return promptLogin();
     if (cmd === 'LOGOUT')    return handleLogout(chatId);
     if (cmd === 'REGISTER')  return sendRegisterInfo();
+    if (cmd === 'EXPLAIN')   return sendExplain('');
     if (cmd === 'PROFILE')   return promptProfile();
     if (cmd === 'BUY')       return promptBuy();
     if (cmd === 'SELL')      return promptSell();
@@ -408,22 +410,26 @@ function sendHelp(chatId) {
 `📖 HELP MENU
 Status: ${status}
 ─────────────────────
-🔐 AUTH
-/login  → Sign in to the bot
-/logout → Sign out
+🔐 ACCOUNT
+/login    → Sign in to the bot
+/logout   → Sign out
+/register → Get full access
 
-📊 ANALYSIS (type manually)
+⚙️ SETTINGS
+/profile → Set your risk level
+→ PROFILE LOW / MEDIUM / HIGH
+
+📊 ANALYSIS (type these)
 BUY TICKER AMOUNT
-→ Check buy signal
 → Example: BUY AMZN 100
 
 SELL TICKER AMOUNT
-→ Smart sell analysis
 → Example: SELL AMZN 100
+
+/explain → What do the results mean?
 
 📁 PORTFOLIO
 UPDATE TICKER B/SAMOUNT PRICE
-→ Record a trade
 → Buy:  UPDATE AMZN B100 185.20
 → Sell: UPDATE AMZN S100 195.00
 
@@ -435,8 +441,8 @@ WATCHLIST REMOVE TICKER
 WATCHLIST LIST
 WATCHLIST SCAN
 ─────────────────────
-ℹ️ Tap a menu command for
-   step-by-step instructions.` });
+Tap any menu command for
+step-by-step instructions.` });
 }
 
 // ══════════════════════════════════════════════
@@ -844,7 +850,7 @@ function watchlistScan(username) {
   const lines  = ['📡 WATCHLIST SCAN', '─────────────────────'];
   results.forEach(r => {
     if (r.error) { lines.push(`${r.ticker}: ⚠️ ${r.error}`); return; }
-    lines.push(`${r.ticker.padEnd(5)} $${String(r.current).padEnd(8)} Z:${r.zScore.toFixed(1).padEnd(5)} RSI:${String(r.rsi.toFixed(0)).padEnd(4)} ${sigMap[r.signal] || r.signal}`);
+    lines.push(`${r.ticker.padEnd(5)} $${String(r.current).padEnd(8)} ${sigMap[r.signal] || r.signal}`);
   });
   return json({ message: lines.join('\n'), results });
 }
@@ -983,6 +989,101 @@ Choose your profile:
   More signals, higher risk
 
 Type one of the above to set your profile.` });
+}
+
+// ══════════════════════════════════════════════
+//  EXPLAIN COMMAND
+// ══════════════════════════════════════════════
+function sendExplain(topic) {
+  const t = (topic || '').toUpperCase();
+
+  const buyExplain =
+`📖 UNDERSTANDING BUY RESULTS
+
+📊 BUY CHECK: AMZN
+─────────────────────
+Trade:   $100    ← How much you plan to invest
+Current: $185    ← Today's stock price
+Average: $190    ← Normal price (20-day average)
+Profile: 🟡 Medium Risk ← Your risk setting
+─────────────────────
+Price Drift  [████░] ✅
+  How far the price has FALLEN below its
+  average. More bars = bigger drop.
+  ✅ means it's fallen enough to be a
+  potential buying opportunity.
+
+Momentum     [███░░] ✅
+  How fast the price is moving DOWN.
+  More bars = stronger oversold condition.
+  ✅ means momentum supports buying.
+─────────────────────
+Fee:       $0.30  ← GoTrade trading fee
+Target:    $190   ← Price we expect it to reach
+Stop-loss: $181   ← Sell here if things go wrong
+Est. net:  +2.4% ← Expected profit after fees
+─────────────────────
+🟢 GOOD TO BUY  ← Both signals are green
+🟡 MIXED        ← Only one signal is green
+🔴 NOT YET      ← Neither signal is green`;
+
+  const sellExplain =
+`📖 UNDERSTANDING SELL RESULTS
+
+📊 SELL CHECK: AMZN
+─────────────────────
+Current: $195    ← Today's stock price
+Average: $190    ← Normal price (20-day average)
+
+Your position:
+  Shares:   0.54  ← How many shares you hold
+  Avg cost: $185  ← What you paid per share
+  P&L: +$5.40 (2.9%) 📈 ← Your current profit
+─────────────────────
+Price Drift  [███░░] ✅
+  How far the price has RISEN above its
+  average. More bars = bigger rise above normal.
+  ✅ means it may be a good time to sell.
+
+Momentum     [██░░░] ✅
+  How fast the price is moving UP.
+  More bars = stronger overbought condition.
+  ✅ means momentum supports selling.
+─────────────────────
+Advice: Up 2.9% — profit target reached!
+─────────────────────
+🟢 GOOD TO SELL   ← Strong sell signal
+🛑 STOP LOSS      ← Down 2%+ → cut losses
+🟡 MIXED SIGNALS  ← Weak signal
+🔴 HOLD FOR NOW   ← No sell signal yet`;
+
+  if (t === 'BUY')  return json({ message: buyExplain });
+  if (t === 'SELL') return json({ message: sellExplain });
+
+  // Default: show both with choice
+  return json({ message:
+`📖 WHAT DO THE RESULTS MEAN?
+
+Type one of the following for a full guide:
+
+EXPLAIN BUY  → Understand BUY results
+EXPLAIN SELL → Understand SELL results
+
+Quick summary:
+
+Price Drift [████░]
+  How far price moved from its average.
+  More bars = bigger move.
+
+Momentum [███░░]
+  How fast price is moving.
+  More bars = stronger trend.
+
+✅ = Signal supports the trade
+❌ = Signal does not support it
+
+Your Profile (LOW / MEDIUM / HIGH) sets
+how sensitive these signals are.` });
 }
 
 // ══════════════════════════════════════════════
