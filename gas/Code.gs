@@ -225,16 +225,24 @@ Please login first.` });
     return portfolio(uPos);
   }
   if (cmd === 'BALANCE') {
-    const uBal = sessionUser || parts[1] || '';
-    if (parts.length >= 2 && !isNaN(parseFloat(parts[1]))) {
-      // BALANCE 500 → set initial balance
-      return setBalance(uBal, parseFloat(parts[1]));
+    // Telegram: BALANCE          → show balance (username from session)
+    // Telegram: BALANCE 500      → set balance (username from session)
+    // Web app:  BALANCE username → show balance
+    // Web app:  BALANCE username 500 → set balance
+    if (sessionUser) {
+      // Telegram path
+      if (parts.length >= 2 && !isNaN(parseFloat(parts[1]))) {
+        return setBalance(sessionUser, parseFloat(parts[1]));
+      }
+      return getBalance(sessionUser);
+    } else {
+      // Web app path (no session)
+      const uBal = parts[1] || '';
+      if (parts.length >= 3 && !isNaN(parseFloat(parts[2]))) {
+        return setBalance(uBal, parseFloat(parts[2]));
+      }
+      return getBalance(uBal);
     }
-    if (parts.length >= 3 && !isNaN(parseFloat(parts[2]))) {
-      // BALANCE username 500 (web app)
-      return setBalance(parts[1] || sessionUser, parseFloat(parts[2]));
-    }
-    return getBalance(uBal);
   }
   if (cmd === 'CLEAR') {
     const uClr = sessionUser || parts[1] || '';
