@@ -1,80 +1,286 @@
 // ══════════════════════════════════════════════
 //  TANAKA US STOCK BOT — Google Apps Script
-//  Features: Multi-user, Watchlist, Smart SELL
+//  Features: Sessions, Multi-user, Watchlist, Smart SELL
 // ══════════════════════════════════════════════
 
 const SPREADSHEET_ID = '1VqEPNEgGlhCQqO-g7yNwwFeiRi2JuzwM-758JgTw2Fg';
+const BOT_TOKEN      = '8777002152:AAGlHUUQ2C5b1MoAUhRzPZMLUTvYYC5Q4lg';
 
 function doGet(e) {
   try {
-    const msg = (e.parameter.message || '').trim().replace(/\s+/g, ' ');
-    if (msg) return handleMessage(msg);
+    const msg    = (e.parameter.message || '').trim().replace(/\s+/g, ' ');
+    const chatId = e.parameter.chatId || '';
 
-    // Legacy direct API
+    if (msg) return handleMessage(msg, chatId);
+
+    // Legacy direct API (for web frontend)
     const type = e.parameter.type;
-    if (type === 'ANALYZE')   return analyze(e);
-    if (type === 'UPDATE')    return updatePortfolio(e);
-    if (type === 'CHECK')     return checkPortfolio(e.parameter.username);
-    if (type === 'AUTH')      return authUser(e.parameter.username, e.parameter.password);
+    if (type === 'ANALYZE')  return analyze(e);
+    if (type === 'UPDATE')   return updatePortfolio(e);
+    if (type === 'CHECK')    return checkPortfolio(e.parameter.username);
+    if (type === 'AUTH')     return authUser(e.parameter.username, e.parameter.password);
     return json({ message: '⚠️ Unknown type.' });
   } catch (err) {
     return json({ message: '⚠️ Error: ' + err.toString() });
   }
 }
 
-// ── Route by message text ─────────────────────
-function handleMessage(message) {
+// ══════════════════════════════════════════════
+//  SESSION MANAGEMENT
+// ══════════════════════════════════════════════
+function getSessionSheet() {
+  const ss    = SpreadsheetApp.openById(SPREADSHEET_ID);
+  let sheet   = ss.getSheetByName('sessions');
+  if (!sheet) {
+    sheet = ss.insertSheet('sessions');
+    sheet.appendRow(['chat_id', 'username', 'logged_in_at']);
+  }
+  return sheet;
+}
+
+function getSession(chatId) {
+  if (!chatId) return null;
+  const sheet = getSessionSheet();
+  const rows  = sheet.getDataRange().getValues().slice(1);
+  for (const row of rows) {
+    if (String(row[0]) === String(chatId)) {
+      return { chatId: row[0], username: row[1], loggedInAt: row[2] };
+    }
+  }
+  return null;
+}
+
+function createSession(chatId, username) {
+  const sheet = getSessionSheet();
+  const rows  = sheet.getDataRange().getValues();
+  for (let i = 1; i < rows.length; i++) {
+    if (String(rows[i][0]) === String(chatId)) {
+      sheet.getRange(i + 1, 2, 1, 2).setValues([[username, new Date().toISOString()]]);
+      return;
+    }
+  }
+  sheet.appendRow([chatId, username, new Date().toISOString()]);
+}
+
+function deleteSession(chatId) {
+  const sheet = getSessionSheet();
+  const rows  = sheet.getDataRange().getValues();
+  for (let i = 1; i < rows.length; i++) {
+    if (String(rows[i][0]) === String(chatId)) {
+      sheet.deleteRow(i + 1);
+      return;
+    }
+  }
+}
+
+// ══════════════════════════════════════════════
+//  MESSAGE ROUTER
+// ══════════════════════════════════════════════
+function handleMessage(message, chatId) {
   const parts = message.split(' ');
   const cmd   = parts[0].toUpperCase();
 
-  if (cmd === 'AUTH') {
-    // AUTH username password
-    return authUser(parts[1], parts[2]);
+  // ── Public commands (no login required) ──
+  if (cmd === '/START' || cmd === 'START') return sendWelcome(chatId);
+  if (cmd === '/HELP'  || cmd === 'HELP')  return sendHelp(chatId);
+  if (cmd === 'LOGIN')  return handleLogin(parts, chatId);
+  if (cmd === 'LOGOUT') return handleLogout(chatId);
 
-  } else if (cmd === 'BUY') {
-    // BUY AMZN 100 [username]
+  // ── Auth wall ──
+  const session = getSession(chatId);
+  if (chatId && !session) {
+    return json({ message:
+`🔒 ACCESS DENIED
+
+You are not logged in.
+
+Use: LOGIN username password
+
+Type HELP for instructions.` });
+  }
+
+  const username = session ? session.username : (parts[parts.length - 1] || '');
+
+  // ── Authenticated commands ──
+  if (cmd === 'BUY') {
     if (parts.length < 3) return json({ message: '❓ Usage: BUY AMZN 100' });
-    return analyze({ parameter: { ticker: parts[1].toUpperCase(), amount: parts[2], analyzeType: 'BUY', username: parts[3] || '' } });
+    return analyze({ parameter: { ticker: parts[1].toUpperCase(), amount: parts[2], analyzeType: 'BUY', username } });
 
   } else if (cmd === 'SELL') {
-    // SELL AMZN 100 username
-    if (parts.length < 3) return json({ message: '❓ Usage: SELL AMZN 100 username' });
-    return analyzeSell(parts[1].toUpperCase(), parseFloat(parts[2]), parts[3] || '');
+    if (parts.length < 3) return json({ message: '❓ Usage: SELL AMZN 100' });
+    return analyzeSell(parts[1].toUpperCase(), parseFloat(parts[2]), username);
 
   } else if (cmd === 'UPDATE') {
-    // UPDATE AMZN B100 185.20 username
-    if (parts.length < 4) return json({ message: '❓ Usage: UPDATE AMZN B100 185.20 username' });
+    if (parts.length < 4) return json({ message: '❓ Usage: UPDATE AMZN B100 185.20' });
     return updatePortfolio({ parameter: {
-      ticker:    parts[1].toUpperCase(),
-      tradeType: parts[2][0].toUpperCase(),
-      amount:    parts[2].slice(1),
-      price:     parts[3],
-      username:  parts[4] || ''
+      ticker: parts[1].toUpperCase(), tradeType: parts[2][0].toUpperCase(),
+      amount: parts[2].slice(1), price: parts[3], username
     }});
 
   } else if (cmd === 'CHECK') {
-    // CHECK [username]
-    return checkPortfolio(parts[1] || '');
+    return checkPortfolio(username);
 
   } else if (cmd === 'WATCHLIST') {
-    // WATCHLIST ADD|REMOVE|LIST|SCAN username [TICKER]
     const sub  = (parts[1] || '').toUpperCase();
-    const user = parts[2] || '';
-    const tick = (parts[3] || '').toUpperCase();
-
-    if (sub === 'ADD')    return watchlistAdd(user, tick);
-    if (sub === 'REMOVE') return watchlistRemove(user, tick);
-    if (sub === 'LIST')   return watchlistList(user);
-    if (sub === 'SCAN')   return watchlistScan(user);
-    return json({ message: '❓ Usage: WATCHLIST ADD|REMOVE|LIST|SCAN username [TICKER]' });
+    const tick = (parts[2] || '').toUpperCase();
+    if (sub === 'ADD')    return watchlistAdd(username, tick);
+    if (sub === 'REMOVE') return watchlistRemove(username, tick);
+    if (sub === 'LIST')   return watchlistList(username);
+    if (sub === 'SCAN')   return watchlistScan(username);
+    return json({ message: '❓ Usage:\nWATCHLIST ADD AMZN\nWATCHLIST REMOVE AMZN\nWATCHLIST LIST\nWATCHLIST SCAN' });
 
   } else if (cmd === 'POSITIONS') {
-    // POSITIONS username
-    return getPositions(parts[1] || '');
+    return checkPortfolio(username);
+
+  } else if (cmd === 'AUTH') {
+    return authUser(parts[1], parts[2]);
 
   } else {
-    return json({ message: '❓ Unknown command: ' + cmd + '\n\nSupported:\nBUY AMZN 100\nSELL AMZN 100 username\nUPDATE AMZN B100 185.20 username\nCHECK username\nWATCHLIST SCAN username\nPOSITIONS username' });
+    return json({ message:
+`❓ Unknown command: ${cmd}
+
+Type HELP to see all commands.` });
   }
+}
+
+// ══════════════════════════════════════════════
+//  LOGIN / LOGOUT
+// ══════════════════════════════════════════════
+function handleLogin(parts, chatId) {
+  if (parts.length < 3) {
+    return json({ message:
+`❓ Usage: LOGIN username password
+
+Example:
+LOGIN tanaka00 mypassword` });
+  }
+
+  const username = parts[1];
+  const password = parts[2];
+  const auth     = authUser(username, password);
+  const data     = JSON.parse(auth.getContent());
+
+  if (data.success) {
+    if (chatId) createSession(chatId, data.username);
+    return json({ message:
+`✅ LOGIN SUCCESSFUL
+
+Welcome back, ${data.username.toUpperCase()}! 👋
+
+You now have full access to the bot.
+Type HELP to see all commands.` });
+  } else {
+    return json({ message:
+`❌ LOGIN FAILED
+
+Invalid username or password.
+Please try again.
+
+LOGIN username password` });
+  }
+}
+
+function handleLogout(chatId) {
+  const session = getSession(chatId);
+  if (!session) {
+    return json({ message: '⚠️ You are not logged in.' });
+  }
+  deleteSession(chatId);
+  return json({ message:
+`👋 LOGGED OUT
+
+You have been logged out successfully.
+Your data is safe.
+
+Use LOGIN to sign back in.` });
+}
+
+// ══════════════════════════════════════════════
+//  HELP & WELCOME
+// ══════════════════════════════════════════════
+function sendWelcome(chatId) {
+  const session = getSession(chatId);
+  const loggedIn = session ? `✅ Logged in as: ${session.username}` : '🔒 Not logged in';
+
+  return json({ message:
+`🏦 TANAKA US STOCK TERMINAL
+─────────────────────────────
+Your personal stock analysis bot
+powered by Yahoo Finance.
+
+Status: ${loggedIn}
+
+${session ? 'Type HELP to see all commands.' : 'To get started:\nLOGIN username password'}
+
+─────────────────────────────
+Type /help or HELP anytime.` });
+}
+
+function sendHelp(chatId) {
+  const session = getSession(chatId);
+
+  const authSection = `
+🔐 AUTHENTICATION
+─────────────────────────────
+LOGIN username password
+  → Sign in to the bot
+
+LOGOUT
+  → Sign out of the bot`;
+
+  const mainSection = `
+📊 ANALYSIS
+─────────────────────────────
+BUY TICKER amount
+  → Check if good to buy
+  → Example: BUY AMZN 100
+
+SELL TICKER amount
+  → Smart sell analysis
+  → Compares vs your buy price
+  → Example: SELL AMZN 100
+
+📁 PORTFOLIO
+─────────────────────────────
+UPDATE TICKER B/S amount price
+  → Record a trade
+  → B = Buy, S = Sell
+  → Example: UPDATE AMZN B100 185.20
+  → Example: UPDATE AMZN S100 195.00
+
+CHECK
+  → View all holdings + P&L
+
+📡 WATCHLIST
+─────────────────────────────
+WATCHLIST ADD TICKER
+  → Add ticker to watchlist
+  → Example: WATCHLIST ADD NVDA
+
+WATCHLIST REMOVE TICKER
+  → Remove from watchlist
+
+WATCHLIST LIST
+  → Show your watchlist
+
+WATCHLIST SCAN
+  → Analyze all watchlist tickers
+  → Shows buy/sell signals table
+
+ℹ️ GENERAL
+─────────────────────────────
+HELP → Show this menu
+START → Show welcome message`;
+
+  if (!session && chatId) {
+    return json({ message:
+`📖 HELP MENU
+${authSection}
+
+🔒 Login first to access all features.` });
+  }
+
+  return json({ message: `📖 HELP MENU\n${authSection}\n${mainSection}` });
 }
 
 // ══════════════════════════════════════════════
@@ -82,17 +288,13 @@ function handleMessage(message) {
 // ══════════════════════════════════════════════
 function authUser(username, password) {
   if (!username || !password) return json({ success: false, message: '⚠️ Username and password required.' });
-
   const ss    = SpreadsheetApp.openById(SPREADSHEET_ID);
   let sheet   = ss.getSheetByName('users');
-
-  // Auto-create users sheet with default admin if missing
   if (!sheet) {
     sheet = ss.insertSheet('users');
     sheet.appendRow(['username', 'password', 'watchlist']);
     sheet.appendRow(['tanaka00', 'Q1w2_e3r4', 'AMZN,AAPL,NVDA']);
   }
-
   const rows = sheet.getDataRange().getValues().slice(1);
   for (const row of rows) {
     if (row[0] === username && row[1] === password) {
@@ -118,28 +320,20 @@ function fetchPrices(ticker) {
   return data.chart.result[0].indicators.quote[0].close.filter(p => p !== null && !isNaN(p));
 }
 
-// ══════════════════════════════════════════════
-//  CALCULATE Z-SCORE + RSI
-// ══════════════════════════════════════════════
 function calcIndicators(closes) {
-  const current = closes[closes.length - 1];
-
-  // Z-Score 20-day
+  const current  = closes[closes.length - 1];
   const zSlice   = closes.slice(-20);
   const mean     = zSlice.reduce((a, b) => a + b, 0) / 20;
   const variance = zSlice.reduce((a, b) => a + Math.pow(b - mean, 2), 0) / 20;
   const stdDev   = Math.sqrt(variance);
   const zScore   = stdDev === 0 ? 0 : (current - mean) / stdDev;
-
-  // RSI 14-day (Wilder smoothing)
-  const rSlice = closes.slice(-15);
+  const rSlice   = closes.slice(-15);
   let gains = 0, losses = 0;
   for (let i = 1; i < 15; i++) {
     const d = rSlice[i] - rSlice[i - 1];
     d > 0 ? gains += d : losses += Math.abs(d);
   }
   const rsi = losses === 0 ? 100 : 100 - (100 / (1 + (gains / 14) / (losses / 14)));
-
   return { current, mean, stdDev, zScore, rsi };
 }
 
@@ -149,10 +343,8 @@ function calcIndicators(closes) {
 function analyze(e) {
   const ticker = (e.parameter.ticker || '').toUpperCase();
   const amount = parseFloat(e.parameter.amount) || 100;
-
   const closes = fetchPrices(ticker);
   if (closes.length < 21) throw new Error('Not enough history for ' + ticker);
-
   const { current, mean, zScore, rsi } = calcIndicators(closes);
   const fee      = Math.max(amount * 0.003, 0.10);
   const zOk      = zScore < -1.5;
@@ -160,21 +352,10 @@ function analyze(e) {
   const target   = Math.min(mean, current * 1.03);
   const stopLoss = current * 0.98;
   const netRet   = ((target - current) / current * 100 - (fee * 2 / amount * 100)).toFixed(2);
-  const signal   = (zOk && rsiOk) ? 'GOOD_BUY' : (zOk || rsiOk) ? 'MIXED' : 'NOT_YET';
-
-  return json({
-    type: 'BUY', ticker, current, mean: +mean.toFixed(2),
-    zScore: +zScore.toFixed(2), rsi: +rsi.toFixed(1),
-    zOk, rsiOk, fee: +fee.toFixed(2),
-    target: +target.toFixed(2), stopLoss: +stopLoss.toFixed(2),
-    netReturn: +netRet, signal, amount,
-    message: formatBuyMessage(ticker, amount, current, mean, zScore, rsi, zOk, rsiOk, fee, target, stopLoss, netRet, signal)
-  });
-}
-
-function formatBuyMessage(ticker, amount, current, mean, zScore, rsi, zOk, rsiOk, fee, target, stopLoss, netRet, signal) {
-  const sig = signal === 'GOOD_BUY' ? '🟢 GOOD TO BUY' : signal === 'MIXED' ? '🟡 MIXED SIGNALS' : '🔴 NOT YET';
-  return `📊 BUY Check: ${ticker}
+  const signal   = (zOk && rsiOk) ? '🟢 GOOD TO BUY' : (zOk || rsiOk) ? '🟡 MIXED SIGNALS' : '🔴 NOT YET';
+  return json({ type: 'BUY', ticker, current, mean: +mean.toFixed(2), zScore: +zScore.toFixed(2), rsi: +rsi.toFixed(1), zOk, rsiOk, fee: +fee.toFixed(2), target: +target.toFixed(2), stopLoss: +stopLoss.toFixed(2), netReturn: +netRet, signal: signal.includes('GOOD') ? 'GOOD_BUY' : signal.includes('MIXED') ? 'MIXED' : 'NOT_YET', amount,
+    message:
+`📊 BUY Check: ${ticker}
 ─────────────────────
 Trade size: $${amount.toFixed(2)}
 Current:    $${current.toFixed(2)}
@@ -188,100 +369,66 @@ Target:     $${target.toFixed(2)}
 Stop-loss:  $${stopLoss.toFixed(2)}
 Net return: +${netRet}%
 ─────────────────────
-${sig}`;
+${signal}` });
 }
 
 // ══════════════════════════════════════════════
-//  SMART SELL — checks existing positions
+//  SMART SELL
 // ══════════════════════════════════════════════
 function analyzeSell(ticker, amount, username) {
   const closes = fetchPrices(ticker);
   if (closes.length < 21) throw new Error('Not enough history for ' + ticker);
-
   const { current, mean, zScore, rsi } = calcIndicators(closes);
-  const fee  = Math.max(amount * 0.003, 0.10);
-  const zOk  = zScore > 1.5;
+  const fee   = Math.max(amount * 0.003, 0.10);
+  const zOk   = zScore > 1.5;
   const rsiOk = rsi > 65;
-
-  // Get user's position in this ticker
   let positionInfo = null;
   if (username) {
     const holdings = getUserHoldings(username);
     if (holdings[ticker] && holdings[ticker].shares > 0.0001) {
-      const h       = holdings[ticker];
+      const h      = holdings[ticker];
       const avgCost = h.invested / h.shares;
-      const pnl     = current - avgCost;
-      const pnlPct  = (pnl / avgCost * 100);
-      positionInfo  = { shares: h.shares, invested: h.invested, avgCost, pnl, pnlPct };
+      const pnl    = current - avgCost;
+      const pnlPct = (pnl / avgCost * 100);
+      positionInfo = { shares: h.shares, invested: h.invested, avgCost, pnl, pnlPct };
     }
   }
-
-  // Sell recommendation logic
-  let recommendation = '';
-  let signal = 'HOLD';
-
+  let recommendation = '', signal = 'HOLD';
   if (positionInfo) {
-    const { pnlPct, avgCost } = positionInfo;
-    if (pnlPct >= 3) {
-      signal = 'GOOD_SELL';
-      recommendation = `✅ You're up ${pnlPct.toFixed(1)}% — profit target reached!`;
-    } else if (pnlPct <= -2) {
-      signal = 'STOP_LOSS';
-      recommendation = `🛑 You're down ${Math.abs(pnlPct).toFixed(1)}% — stop-loss triggered!`;
-    } else if (zOk && rsiOk) {
-      signal = 'GOOD_SELL';
-      recommendation = `📈 Technically overbought — good exit point`;
-    } else if (zOk || rsiOk) {
-      signal = 'MIXED';
-      recommendation = `🟡 Mixed signals — consider partial sell`;
-    } else {
-      signal = 'HOLD';
-      recommendation = `💎 Hold — price near avg cost, no strong sell signal`;
-    }
+    const { pnlPct } = positionInfo;
+    if (pnlPct >= 3)       { signal = 'GOOD_SELL'; recommendation = `✅ Up ${pnlPct.toFixed(1)}% — profit target reached!`; }
+    else if (pnlPct <= -2) { signal = 'STOP_LOSS'; recommendation = `🛑 Down ${Math.abs(pnlPct).toFixed(1)}% — stop-loss triggered!`; }
+    else if (zOk && rsiOk) { signal = 'GOOD_SELL'; recommendation = `📈 Technically overbought — good exit`; }
+    else if (zOk || rsiOk) { signal = 'MIXED';     recommendation = `🟡 Mixed signals — consider partial sell`; }
+    else                   { signal = 'HOLD';       recommendation = `💎 Hold — no strong sell signal yet`; }
   } else {
-    if (zOk && rsiOk) { signal = 'GOOD_SELL'; recommendation = '🟢 Technically overbought'; }
-    else if (zOk || rsiOk) { signal = 'MIXED'; recommendation = '🟡 Mixed signals'; }
-    else { signal = 'HOLD'; recommendation = '🔴 No position found — hold or buy dip'; }
+    if (zOk && rsiOk)      { signal = 'GOOD_SELL'; recommendation = '🟢 Technically overbought'; }
+    else if (zOk || rsiOk) { signal = 'MIXED';     recommendation = '🟡 Mixed signals'; }
+    else                   { signal = 'HOLD';       recommendation = '⚪ No sell signal — hold'; }
   }
-
-  const sigEmoji = signal === 'GOOD_SELL' ? '🟢 GOOD TO SELL'
-                 : signal === 'STOP_LOSS' ? '🛑 STOP LOSS — SELL NOW'
-                 : signal === 'MIXED' ? '🟡 MIXED SIGNALS'
-                 : '🔴 HOLD FOR NOW';
-
-  let positionLine = '';
-  if (positionInfo) {
-    positionLine = `\nYour position:
-  Shares:   ${positionInfo.shares.toFixed(4)}
-  Avg cost: $${positionInfo.avgCost.toFixed(2)}
-  P&L:      ${positionInfo.pnl >= 0 ? '+' : ''}$${positionInfo.pnl.toFixed(2)} (${positionInfo.pnlPct.toFixed(1)}%) ${positionInfo.pnl >= 0 ? '📈' : '📉'}`;
-  } else {
-    positionLine = '\nNo recorded position found for ' + ticker;
-  }
-
-  const message = `📊 SELL Check: ${ticker}
+  const sigLabel = signal === 'GOOD_SELL' ? '🟢 GOOD TO SELL' : signal === 'STOP_LOSS' ? '🛑 STOP LOSS — SELL NOW' : signal === 'MIXED' ? '🟡 MIXED SIGNALS' : '🔴 HOLD FOR NOW';
+  let posLine = positionInfo
+    ? `\nYour position:\n  Shares: ${positionInfo.shares.toFixed(4)}\n  Avg:    $${positionInfo.avgCost.toFixed(2)}\n  P&L:    ${positionInfo.pnl >= 0 ? '+' : ''}$${positionInfo.pnl.toFixed(2)} (${positionInfo.pnlPct.toFixed(1)}%) ${positionInfo.pnl >= 0 ? '📈' : '📉'}`
+    : '\nNo recorded position for ' + ticker;
+  return json({ type: 'SELL', ticker, current, mean: +mean.toFixed(2), zScore: +zScore.toFixed(2), rsi: +rsi.toFixed(1), signal, positionInfo,
+    message:
+`📊 SELL Check: ${ticker}
 ─────────────────────
-Current:  $${current.toFixed(2)}
-20d avg:  $${mean.toFixed(2)}
-${positionLine}
+Current: $${current.toFixed(2)}
+20d avg: $${mean.toFixed(2)}
+${posLine}
 ─────────────────────
 Z-Score: ${zScore.toFixed(2)} ${zOk ? '✅' : '❌'} (need > +1.5)
 RSI(14): ${rsi.toFixed(1)} ${rsiOk ? '✅' : '❌'} (need > 65)
 ─────────────────────
-Fee: $${fee.toFixed(2)} (GoTrade 0.3%)
+Fee:    $${fee.toFixed(2)} (GoTrade)
 Advice: ${recommendation}
 ─────────────────────
-${sigEmoji}`;
-
-  return json({
-    type: 'SELL', ticker, current, mean: +mean.toFixed(2),
-    zScore: +zScore.toFixed(2), rsi: +rsi.toFixed(1),
-    zOk, rsiOk, signal, positionInfo, message
-  });
+${sigLabel}` });
 }
 
 // ══════════════════════════════════════════════
-//  PORTFOLIO — Record & Check
+//  PORTFOLIO
 // ══════════════════════════════════════════════
 function updatePortfolio(e) {
   const ticker    = (e.parameter.ticker || '').toUpperCase();
@@ -292,24 +439,10 @@ function updatePortfolio(e) {
   const shares    = amount / price;
   const fee       = Math.max(amount * 0.003, 0.10);
   const date      = Utilities.formatDate(new Date(), 'Asia/Jakarta', 'yyyy-MM-dd');
-
-  const ss    = SpreadsheetApp.openById(SPREADSHEET_ID);
-  let sheet   = ss.getSheetByName('transactions');
-  if (!sheet) {
-    sheet = ss.insertSheet('transactions');
-    sheet.appendRow(['date','username','ticker','type','amount_usd','price','shares','fee']);
-  }
-
-  // Check if headers have username column
-  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getValues()[0];
-  if (!headers.includes('username')) {
-    // Old format — insert username col
-    sheet.insertColumnAfter(1);
-    sheet.getRange(1, 2).setValue('username');
-  }
-
+  const ss        = SpreadsheetApp.openById(SPREADSHEET_ID);
+  let sheet       = ss.getSheetByName('transactions');
+  if (!sheet) { sheet = ss.insertSheet('transactions'); sheet.appendRow(['date','username','ticker','type','amount_usd','price','shares','fee']); }
   sheet.appendRow([date, username, ticker, tradeType, amount, price, +shares.toFixed(6), +fee.toFixed(2)]);
-
   return json({ message:
 `✅ Portfolio Updated!
 ─────────────────────
@@ -326,7 +459,6 @@ function getUserHoldings(username) {
   const ss    = SpreadsheetApp.openById(SPREADSHEET_ID);
   const sheet = ss.getSheetByName('transactions');
   if (!sheet || sheet.getLastRow() <= 1) return {};
-
   const rows    = sheet.getDataRange().getValues();
   const headers = rows[0];
   const uIdx    = headers.indexOf('username');
@@ -334,159 +466,133 @@ function getUserHoldings(username) {
   const typeIdx = headers.indexOf('type');
   const aIdx    = headers.indexOf('amount_usd');
   const sIdx    = headers.indexOf('shares');
-
   const holdings = {};
   rows.slice(1).forEach(r => {
-    const rowUser   = uIdx >= 0 ? r[uIdx] : 'tanaka00';
+    const rowUser = uIdx >= 0 ? r[uIdx] : 'tanaka00';
     if (username && rowUser !== username) return;
-    const ticker = r[tIdx];
-    const type   = r[typeIdx];
-    const amount = +r[aIdx];
-    const shares = +r[sIdx];
+    const ticker = r[tIdx]; const type = r[typeIdx]; const amount = +r[aIdx]; const shares = +r[sIdx];
     if (!holdings[ticker]) holdings[ticker] = { shares: 0, invested: 0 };
-    if (type === 'BUY')  { holdings[ticker].shares += shares; holdings[ticker].invested += amount; }
-    else                 { holdings[ticker].shares -= shares; holdings[ticker].invested -= amount; }
+    if (type === 'BUY') { holdings[ticker].shares += shares; holdings[ticker].invested += amount; }
+    else                { holdings[ticker].shares -= shares; holdings[ticker].invested -= amount; }
   });
   return holdings;
 }
 
 function checkPortfolio(username) {
   const holdings = getUserHoldings(username);
-
-  if (Object.keys(holdings).length === 0) {
-    return json({ message: '💼 Portfolio is empty.\n\nRecord trades with UPDATE first.' });
-  }
-
-  let lines = ['💼 Portfolio' + (username ? ' — ' + username : ''), '─────────────────────'];
+  if (Object.keys(holdings).length === 0) return json({ message: '💼 Portfolio is empty.\n\nRecord trades with:\nUPDATE AMZN B100 185.20', positions: [] });
+  let lines = ['💼 Portfolio — ' + username, '─────────────────────'];
   let totalInvested = 0, totalValue = 0;
   const positions = [];
-
   for (const ticker of Object.keys(holdings)) {
     const h = holdings[ticker];
     if (h.shares < 0.0001) continue;
     let currentPrice;
-    try { const c = fetchPrices(ticker); currentPrice = c[c.length - 1]; }
-    catch (_) { lines.push(ticker + ' │ ⚠️ Price fetch failed'); continue; }
-
+    try { const c = fetchPrices(ticker); currentPrice = c[c.length - 1]; } catch (_) { lines.push(ticker + ' │ ⚠️ Price fetch failed'); continue; }
     const value   = h.shares * currentPrice;
     const avgCost = h.invested / h.shares;
     const pnl     = value - h.invested;
     const pnlPct  = (pnl / h.invested * 100);
-    totalInvested += h.invested;
-    totalValue    += value;
+    totalInvested += h.invested; totalValue += value;
     positions.push({ ticker, shares: +h.shares.toFixed(4), avgCost: +avgCost.toFixed(2), currentPrice: +currentPrice.toFixed(2), value: +value.toFixed(2), pnl: +pnl.toFixed(2), pnlPct: +pnlPct.toFixed(1) });
-    lines.push(`${ticker}\n  ${h.shares.toFixed(4)} shares @ avg $${avgCost.toFixed(2)}\n  Now: $${currentPrice.toFixed(2)}\n  P&L: ${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)} (${pnlPct.toFixed(1)}%) ${pnl >= 0 ? '📈' : '📉'}`);
+    lines.push(`${ticker}\n  ${h.shares.toFixed(4)} sh @ avg $${avgCost.toFixed(2)}\n  Now: $${currentPrice.toFixed(2)}\n  P&L: ${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)} (${pnlPct.toFixed(1)}%) ${pnl >= 0 ? '📈' : '📉'}`);
   }
-
   const totalPnl    = totalValue - totalInvested;
   const totalPnlPct = totalInvested > 0 ? (totalPnl / totalInvested * 100).toFixed(1) : '0.0';
   lines.push('─────────────────────');
-  lines.push('Total invested: $' + totalInvested.toFixed(2));
-  lines.push('Total value:    $' + totalValue.toFixed(2));
-  lines.push('Net P&L: ' + (totalPnl >= 0 ? '+' : '') + '$' + totalPnl.toFixed(2) + ' (' + totalPnlPct + '%)');
-
+  lines.push('Invested: $' + totalInvested.toFixed(2));
+  lines.push('Value:    $' + totalValue.toFixed(2));
+  lines.push('P&L: ' + (totalPnl >= 0 ? '+' : '') + '$' + totalPnl.toFixed(2) + ' (' + totalPnlPct + '%)');
   return json({ message: lines.join('\n'), positions, totalInvested: +totalInvested.toFixed(2), totalValue: +totalValue.toFixed(2), totalPnl: +totalPnl.toFixed(2) });
 }
 
-function getPositions(username) {
-  return checkPortfolio(username);
-}
-
 // ══════════════════════════════════════════════
-//  WATCHLIST — Add, Remove, List, Scan
+//  WATCHLIST
 // ══════════════════════════════════════════════
-function getSheet() { return SpreadsheetApp.openById(SPREADSHEET_ID); }
-
-function getUserRow(sheet, username) {
-  const rows = sheet.getDataRange().getValues();
-  for (let i = 1; i < rows.length; i++) {
-    if (rows[i][0] === username) return { row: i + 1, data: rows[i] };
-  }
-  return null;
-}
-
 function ensureUsersSheet() {
-  const ss    = getSheet();
+  const ss    = SpreadsheetApp.openById(SPREADSHEET_ID);
   let sheet   = ss.getSheetByName('users');
-  if (!sheet) {
-    sheet = ss.insertSheet('users');
-    sheet.appendRow(['username', 'password', 'watchlist']);
-    sheet.appendRow(['tanaka00', 'Q1w2_e3r4', 'AMZN,AAPL,NVDA']);
-  }
+  if (!sheet) { sheet = ss.insertSheet('users'); sheet.appendRow(['username','password','watchlist']); sheet.appendRow(['tanaka00','Q1w2_e3r4','AMZN,AAPL,NVDA']); }
   return sheet;
 }
-
+function getUserRow(sheet, username) {
+  const rows = sheet.getDataRange().getValues();
+  for (let i = 1; i < rows.length; i++) { if (rows[i][0] === username) return { row: i + 1, data: rows[i] }; }
+  return null;
+}
 function watchlistAdd(username, ticker) {
-  if (!ticker) return json({ message: '❓ Usage: WATCHLIST ADD username TICKER' });
-  const sheet = ensureUsersSheet();
-  const found = getUserRow(sheet, username);
-  if (!found) return json({ message: '⚠️ User not found: ' + username });
-
+  if (!ticker) return json({ message: '❓ Usage: WATCHLIST ADD TICKER' });
+  const sheet = ensureUsersSheet(); const found = getUserRow(sheet, username);
+  if (!found) return json({ message: '⚠️ User not found' });
   const current = (found.data[2] || '').toString();
   const list    = current ? current.split(',').map(t => t.trim()).filter(Boolean) : [];
   if (!list.includes(ticker)) list.push(ticker);
   sheet.getRange(found.row, 3).setValue(list.join(','));
-  return json({ message: `✅ Added ${ticker} to watchlist.\nWatchlist: ${list.join(', ')}`, watchlist: list });
+  return json({ message: `✅ Added ${ticker} to watchlist.\n\nWatchlist: ${list.join(', ')}`, watchlist: list });
 }
-
 function watchlistRemove(username, ticker) {
-  if (!ticker) return json({ message: '❓ Usage: WATCHLIST REMOVE username TICKER' });
-  const sheet = ensureUsersSheet();
-  const found = getUserRow(sheet, username);
-  if (!found) return json({ message: '⚠️ User not found: ' + username });
-
-  const current = (found.data[2] || '').toString();
-  const list    = current.split(',').map(t => t.trim()).filter(t => t && t !== ticker);
+  if (!ticker) return json({ message: '❓ Usage: WATCHLIST REMOVE TICKER' });
+  const sheet = ensureUsersSheet(); const found = getUserRow(sheet, username);
+  if (!found) return json({ message: '⚠️ User not found' });
+  const list = (found.data[2] || '').toString().split(',').map(t => t.trim()).filter(t => t && t !== ticker);
   sheet.getRange(found.row, 3).setValue(list.join(','));
-  return json({ message: `✅ Removed ${ticker} from watchlist.\nWatchlist: ${list.join(', ') || 'empty'}`, watchlist: list });
+  return json({ message: `✅ Removed ${ticker}.\n\nWatchlist: ${list.join(', ') || 'empty'}`, watchlist: list });
 }
-
 function watchlistList(username) {
-  const sheet = ensureUsersSheet();
-  const found = getUserRow(sheet, username);
+  const sheet = ensureUsersSheet(); const found = getUserRow(sheet, username);
   if (!found) return json({ message: '⚠️ User not found.' });
   const list = (found.data[2] || '').toString().split(',').map(t => t.trim()).filter(Boolean);
-  return json({ message: `📋 Watchlist for ${username}:\n${list.join(', ') || 'empty'}`, watchlist: list });
+  return json({ message: `📋 Watchlist:\n${list.join(', ') || 'empty'}`, watchlist: list });
 }
-
 function watchlistScan(username) {
-  const sheet = ensureUsersSheet();
-  const found = getUserRow(sheet, username);
+  const sheet = ensureUsersSheet(); const found = getUserRow(sheet, username);
   if (!found) return json({ message: '⚠️ User not found.' });
-
   const list = (found.data[2] || '').toString().split(',').map(t => t.trim()).filter(Boolean);
-  if (list.length === 0) return json({ message: '📋 Watchlist is empty. Add tickers first.', results: [] });
-
+  if (list.length === 0) return json({ message: '📋 Watchlist is empty.\n\nWATCHLIST ADD AMZN', results: [] });
   const results = [];
   for (const ticker of list) {
     try {
       const closes = fetchPrices(ticker);
       if (closes.length < 21) { results.push({ ticker, error: 'Not enough data' }); continue; }
       const { current, mean, zScore, rsi } = calcIndicators(closes);
-      const zOk   = zScore < -1.5;
-      const rsiOk = rsi < 35;
-      const zSell = zScore > 1.5;
-      const rsiSell = rsi > 65;
+      const zOk = zScore < -1.5, rsiOk = rsi < 35, zSell = zScore > 1.5, rsiSell = rsi > 65;
       let signal = 'HOLD';
-      if (zOk && rsiOk)         signal = 'BUY';
-      else if (zOk || rsiOk)    signal = 'WEAK_BUY';
-      else if (zSell && rsiSell) signal = 'SELL';
-      else if (zSell || rsiSell) signal = 'WEAK_SELL';
+      if (zOk && rsiOk) signal = 'BUY'; else if (zOk || rsiOk) signal = 'WEAK_BUY';
+      else if (zSell && rsiSell) signal = 'SELL'; else if (zSell || rsiSell) signal = 'WEAK_SELL';
       results.push({ ticker, current: +current.toFixed(2), mean: +mean.toFixed(2), zScore: +zScore.toFixed(2), rsi: +rsi.toFixed(1), signal });
-    } catch (err) {
-      results.push({ ticker, error: err.message });
-    }
+    } catch (err) { results.push({ ticker, error: err.message }); }
   }
-
-  // Format table message
-  const lines = ['📡 Watchlist Scan — ' + username, '─────────────────────'];
+  const lines = ['📡 Watchlist Scan', '─────────────────────'];
+  const sigMap = { BUY: '🟢 BUY', WEAK_BUY: '🟡 WEAK BUY', SELL: '🔴 SELL', WEAK_SELL: '🟠 WEAK SELL', HOLD: '⚪ HOLD' };
   results.forEach(r => {
     if (r.error) { lines.push(`${r.ticker}: ⚠️ ${r.error}`); return; }
-    const sig = r.signal === 'BUY' ? '🟢 BUY' : r.signal === 'WEAK_BUY' ? '🟡 WEAK BUY' : r.signal === 'SELL' ? '🔴 SELL' : r.signal === 'WEAK_SELL' ? '🟠 WEAK SELL' : '⚪ HOLD';
-    lines.push(`${r.ticker.padEnd(6)} $${r.current}  Z:${r.zScore}  RSI:${r.rsi}  ${sig}`);
+    lines.push(`${r.ticker.padEnd(6)} $${r.current}  Z:${r.zScore}  RSI:${r.rsi}  ${sigMap[r.signal] || r.signal}`);
   });
-
   return json({ message: lines.join('\n'), results });
+}
+
+// ══════════════════════════════════════════════
+//  SET TELEGRAM BOT COMMANDS (run once manually)
+// ══════════════════════════════════════════════
+function setTelegramCommands() {
+  const commands = [
+    { command: 'start',  description: '🏦 Welcome & status' },
+    { command: 'help',   description: '📖 Show all commands' },
+    { command: 'login',  description: '🔐 Login to the bot' },
+    { command: 'logout', description: '👋 Logout from the bot' },
+    { command: 'buy',    description: '📈 Analyze buy signal — BUY AMZN 100' },
+    { command: 'sell',   description: '📉 Smart sell analysis — SELL AMZN 100' },
+    { command: 'update', description: '📝 Record a trade — UPDATE AMZN B100 185.20' },
+    { command: 'check',  description: '💼 View portfolio & P&L' },
+    { command: 'watchlist', description: '📡 Manage & scan watchlist' }
+  ];
+  const url  = 'https://api.telegram.org/bot' + BOT_TOKEN + '/setMyCommands';
+  const resp = UrlFetchApp.fetch(url, {
+    method: 'POST',
+    contentType: 'application/json',
+    payload: JSON.stringify({ commands })
+  });
+  Logger.log(resp.getContentText());
 }
 
 function json(data) {
