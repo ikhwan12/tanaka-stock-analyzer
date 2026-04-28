@@ -1,0 +1,762 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>TANAKA // US Stock Terminal</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;700;800&display=swap" rel="stylesheet"/>
+<style>
+  :root {
+    --bg: #080a0f;
+    --panel: #0d1017;
+    --border: #1a2030;
+    --accent: #00ff88;
+    --accent2: #0088ff;
+    --red: #ff3b5c;
+    --yellow: #ffc93c;
+    --text: #e8eaf0;
+    --muted: #4a5568;
+    --mono: 'Space Mono', monospace;
+    --sans: 'Syne', sans-serif;
+  }
+
+  * { margin:0; padding:0; box-sizing:border-box; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--mono);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* ── GRID NOISE BACKGROUND ── */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image:
+      linear-gradient(rgba(0,255,136,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,255,136,0.03) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  /* ════════════════════════════
+     LOGIN SCREEN
+  ════════════════════════════ */
+  #login-screen {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+    background: var(--bg);
+  }
+
+  .login-box {
+    width: 100%;
+    max-width: 420px;
+    padding: 48px;
+    border: 1px solid var(--border);
+    background: var(--panel);
+    position: relative;
+    animation: fadeUp 0.6s ease;
+  }
+
+  .login-box::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, var(--accent), var(--accent2));
+  }
+
+  .login-logo {
+    font-family: var(--sans);
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 6px;
+    color: var(--muted);
+    text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+
+  .login-title {
+    font-family: var(--sans);
+    font-size: 28px;
+    font-weight: 800;
+    color: var(--text);
+    margin-bottom: 6px;
+    line-height: 1.1;
+  }
+
+  .login-title span { color: var(--accent); }
+
+  .login-sub {
+    font-size: 11px;
+    color: var(--muted);
+    margin-bottom: 40px;
+    letter-spacing: 1px;
+  }
+
+  .field {
+    margin-bottom: 20px;
+  }
+
+  .field label {
+    display: block;
+    font-size: 10px;
+    letter-spacing: 2px;
+    color: var(--muted);
+    text-transform: uppercase;
+    margin-bottom: 8px;
+  }
+
+  .field input {
+    width: 100%;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 14px;
+    padding: 12px 16px;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+
+  .field input:focus {
+    border-color: var(--accent);
+  }
+
+  .login-btn {
+    width: 100%;
+    padding: 14px;
+    background: var(--accent);
+    color: var(--bg);
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    border: none;
+    cursor: pointer;
+    transition: opacity 0.2s, transform 0.1s;
+    margin-top: 8px;
+  }
+
+  .login-btn:hover { opacity: 0.85; }
+  .login-btn:active { transform: scale(0.99); }
+
+  .login-error {
+    font-size: 11px;
+    color: var(--red);
+    margin-top: 12px;
+    letter-spacing: 1px;
+    display: none;
+  }
+
+  /* ════════════════════════════
+     DASHBOARD
+  ════════════════════════════ */
+  #dashboard {
+    display: none;
+    min-height: 100vh;
+    position: relative;
+    z-index: 1;
+  }
+
+  /* TOPBAR */
+  .topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 16px 32px;
+    border-bottom: 1px solid var(--border);
+    background: var(--panel);
+    position: sticky;
+    top: 0;
+    z-index: 50;
+  }
+
+  .topbar-logo {
+    font-family: var(--sans);
+    font-size: 13px;
+    font-weight: 800;
+    letter-spacing: 4px;
+    color: var(--text);
+  }
+
+  .topbar-logo span { color: var(--accent); }
+
+  .topbar-right {
+    display: flex;
+    align-items: center;
+    gap: 24px;
+  }
+
+  .topbar-user {
+    font-size: 11px;
+    color: var(--muted);
+    letter-spacing: 1px;
+  }
+
+  .topbar-user strong { color: var(--accent); }
+
+  .logout-btn {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 2px;
+    color: var(--muted);
+    background: none;
+    border: 1px solid var(--border);
+    padding: 6px 14px;
+    cursor: pointer;
+    text-transform: uppercase;
+    transition: all 0.2s;
+  }
+
+  .logout-btn:hover { border-color: var(--red); color: var(--red); }
+
+  /* MAIN LAYOUT */
+  .main {
+    display: grid;
+    grid-template-columns: 1fr 360px;
+    gap: 0;
+    min-height: calc(100vh - 57px);
+  }
+
+  .left-panel {
+    padding: 32px;
+    border-right: 1px solid var(--border);
+  }
+
+  .right-panel {
+    padding: 32px;
+    background: var(--panel);
+  }
+
+  /* SECTION HEADER */
+  .section-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 24px;
+  }
+
+  .section-tag {
+    font-size: 9px;
+    letter-spacing: 3px;
+    color: var(--accent);
+    text-transform: uppercase;
+    border: 1px solid var(--accent);
+    padding: 3px 8px;
+  }
+
+  .section-title {
+    font-family: var(--sans);
+    font-size: 20px;
+    font-weight: 800;
+    color: var(--text);
+  }
+
+  /* COMMAND BOX */
+  .command-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-bottom: 24px;
+  }
+
+  .cmd-card {
+    border: 1px solid var(--border);
+    padding: 20px;
+    cursor: pointer;
+    transition: all 0.2s;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .cmd-card::after {
+    content: '';
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    height: 2px;
+    transform: scaleX(0);
+    transition: transform 0.2s;
+  }
+
+  .cmd-card.buy::after  { background: var(--accent); }
+  .cmd-card.sell::after { background: var(--red); }
+  .cmd-card.upd::after  { background: var(--yellow); }
+  .cmd-card.chk::after  { background: var(--accent2); }
+
+  .cmd-card:hover { border-color: var(--muted); }
+  .cmd-card:hover::after { transform: scaleX(1); }
+
+  .cmd-card.active.buy  { border-color: var(--accent); background: rgba(0,255,136,0.05); }
+  .cmd-card.active.sell { border-color: var(--red); background: rgba(255,59,92,0.05); }
+  .cmd-card.active.upd  { border-color: var(--yellow); background: rgba(255,201,60,0.05); }
+  .cmd-card.active.chk  { border-color: var(--accent2); background: rgba(0,136,255,0.05); }
+
+  .cmd-icon {
+    font-size: 20px;
+    margin-bottom: 8px;
+  }
+
+  .cmd-label {
+    font-family: var(--sans);
+    font-size: 15px;
+    font-weight: 800;
+    margin-bottom: 4px;
+  }
+
+  .cmd-card.buy  .cmd-label { color: var(--accent); }
+  .cmd-card.sell .cmd-label { color: var(--red); }
+  .cmd-card.upd  .cmd-label { color: var(--yellow); }
+  .cmd-card.chk  .cmd-label { color: var(--accent2); }
+
+  .cmd-desc {
+    font-size: 10px;
+    color: var(--muted);
+    letter-spacing: 1px;
+  }
+
+  /* FORMS */
+  .form-area {
+    border: 1px solid var(--border);
+    padding: 24px;
+    animation: fadeUp 0.3s ease;
+  }
+
+  .form-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-bottom: 16px;
+  }
+
+  .form-row.full { grid-template-columns: 1fr; }
+  .form-row.three { grid-template-columns: 1fr 1fr 1fr; }
+
+  .input-group label {
+    display: block;
+    font-size: 9px;
+    letter-spacing: 2px;
+    color: var(--muted);
+    text-transform: uppercase;
+    margin-bottom: 6px;
+  }
+
+  .input-group input, .input-group select {
+    width: 100%;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: var(--mono);
+    font-size: 13px;
+    padding: 10px 12px;
+    outline: none;
+    transition: border-color 0.2s;
+    text-transform: uppercase;
+  }
+
+  .input-group input:focus { border-color: var(--accent); }
+
+  .run-btn {
+    width: 100%;
+    padding: 13px;
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    border: none;
+    cursor: pointer;
+    transition: opacity 0.2s;
+    margin-top: 4px;
+  }
+
+  .run-btn:hover { opacity: 0.85; }
+  .run-btn.buy  { background: var(--accent);  color: var(--bg); }
+  .run-btn.sell { background: var(--red);     color: #fff; }
+  .run-btn.upd  { background: var(--yellow);  color: var(--bg); }
+  .run-btn.chk  { background: var(--accent2); color: #fff; }
+
+  /* RESULT BOX */
+  .result-box {
+    margin-top: 20px;
+    background: var(--bg);
+    border: 1px solid var(--border);
+    padding: 20px;
+    font-size: 12px;
+    line-height: 1.9;
+    white-space: pre-wrap;
+    word-break: break-word;
+    min-height: 80px;
+    color: var(--text);
+    position: relative;
+    display: none;
+  }
+
+  .result-box.show { display: block; animation: fadeUp 0.3s ease; }
+
+  .result-box.loading::after {
+    content: 'FETCHING DATA...';
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    letter-spacing: 3px;
+    color: var(--accent);
+    background: var(--bg);
+    animation: pulse 1s infinite;
+  }
+
+  /* RIGHT PANEL — HISTORY */
+  .history-list {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    max-height: calc(100vh - 200px);
+    overflow-y: auto;
+  }
+
+  .history-list::-webkit-scrollbar { width: 2px; }
+  .history-list::-webkit-scrollbar-track { background: var(--bg); }
+  .history-list::-webkit-scrollbar-thumb { background: var(--border); }
+
+  .history-item {
+    border: 1px solid var(--border);
+    padding: 14px;
+    font-size: 11px;
+    animation: fadeUp 0.3s ease;
+    line-height: 1.7;
+  }
+
+  .history-item .h-cmd {
+    font-family: var(--sans);
+    font-weight: 800;
+    font-size: 12px;
+    margin-bottom: 6px;
+  }
+
+  .history-item.buy-h  .h-cmd { color: var(--accent); }
+  .history-item.sell-h .h-cmd { color: var(--red); }
+  .history-item.upd-h  .h-cmd { color: var(--yellow); }
+  .history-item.chk-h  .h-cmd { color: var(--accent2); }
+
+  .history-item .h-time {
+    font-size: 9px;
+    color: var(--muted);
+    letter-spacing: 1px;
+    margin-bottom: 6px;
+  }
+
+  .history-item .h-result {
+    color: var(--muted);
+    font-size: 10px;
+    white-space: pre-wrap;
+    max-height: 100px;
+    overflow: hidden;
+    -webkit-mask-image: linear-gradient(to bottom, black 60%, transparent 100%);
+  }
+
+  .empty-history {
+    font-size: 11px;
+    color: var(--muted);
+    letter-spacing: 1px;
+    text-align: center;
+    padding: 40px 0;
+    border: 1px dashed var(--border);
+  }
+
+  /* ANIMATIONS */
+  @keyframes fadeUp {
+    from { opacity: 0; transform: translateY(12px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50%       { opacity: 0.4; }
+  }
+
+  /* RESPONSIVE */
+  @media (max-width: 768px) {
+    .main { grid-template-columns: 1fr; }
+    .right-panel { border-top: 1px solid var(--border); border-right: none; }
+    .left-panel { padding: 20px; }
+    .right-panel { padding: 20px; }
+    .command-grid { grid-template-columns: 1fr 1fr; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ══ LOGIN ══ -->
+<div id="login-screen">
+  <div class="login-box">
+    <div class="login-logo">Tanaka Capital</div>
+    <div class="login-title">US Stock<br/><span>Terminal</span></div>
+    <div class="login-sub">// AUTHORIZED ACCESS ONLY</div>
+
+    <div class="field">
+      <label>Username</label>
+      <input type="text" id="username" placeholder="tanaka00" autocomplete="off"/>
+    </div>
+    <div class="field">
+      <label>Password</label>
+      <input type="password" id="password" placeholder="••••••••"/>
+    </div>
+    <button class="login-btn" onclick="doLogin()">INITIALIZE SESSION →</button>
+    <div class="login-error" id="login-error">⚠ ACCESS DENIED — invalid credentials</div>
+  </div>
+</div>
+
+<!-- ══ DASHBOARD ══ -->
+<div id="dashboard">
+
+  <div class="topbar">
+    <div class="topbar-logo">TANAKA // <span>STOCK</span></div>
+    <div class="topbar-right">
+      <div class="topbar-user">OPERATOR: <strong>TANAKA00</strong></div>
+      <button class="logout-btn" onclick="doLogout()">LOG OUT</button>
+    </div>
+  </div>
+
+  <div class="main">
+
+    <!-- LEFT: COMMAND CENTER -->
+    <div class="left-panel">
+      <div class="section-header">
+        <div class="section-tag">01</div>
+        <div class="section-title">Command Center</div>
+      </div>
+
+      <div class="command-grid">
+        <div class="cmd-card buy" onclick="selectCmd('buy')">
+          <div class="cmd-icon">📈</div>
+          <div class="cmd-label">BUY</div>
+          <div class="cmd-desc">Analyze buy signal</div>
+        </div>
+        <div class="cmd-card sell" onclick="selectCmd('sell')">
+          <div class="cmd-icon">📉</div>
+          <div class="cmd-label">SELL</div>
+          <div class="cmd-desc">Analyze sell signal</div>
+        </div>
+        <div class="cmd-card upd" onclick="selectCmd('update')">
+          <div class="cmd-icon">📝</div>
+          <div class="cmd-label">UPDATE</div>
+          <div class="cmd-desc">Record a trade</div>
+        </div>
+        <div class="cmd-card chk" onclick="selectCmd('check')">
+          <div class="cmd-icon">💼</div>
+          <div class="cmd-label">CHECK</div>
+          <div class="cmd-desc">View portfolio</div>
+        </div>
+      </div>
+
+      <!-- FORM: BUY / SELL -->
+      <div class="form-area" id="form-buy" style="display:none">
+        <div class="form-row">
+          <div class="input-group">
+            <label>Ticker Symbol</label>
+            <input type="text" id="buy-ticker" placeholder="AMZN" maxlength="6"/>
+          </div>
+          <div class="input-group">
+            <label>Amount (USD)</label>
+            <input type="number" id="buy-amount" placeholder="100" value="100"/>
+          </div>
+        </div>
+        <button class="run-btn buy" onclick="runCmd('buy')">▶ RUN BUY ANALYSIS</button>
+        <div class="result-box" id="result-buy"></div>
+      </div>
+
+      <div class="form-area" id="form-sell" style="display:none">
+        <div class="form-row">
+          <div class="input-group">
+            <label>Ticker Symbol</label>
+            <input type="text" id="sell-ticker" placeholder="AMZN" maxlength="6"/>
+          </div>
+          <div class="input-group">
+            <label>Amount (USD)</label>
+            <input type="number" id="sell-amount" placeholder="100" value="100"/>
+          </div>
+        </div>
+        <button class="run-btn sell" onclick="runCmd('sell')">▶ RUN SELL ANALYSIS</button>
+        <div class="result-box" id="result-sell"></div>
+      </div>
+
+      <!-- FORM: UPDATE -->
+      <div class="form-area" id="form-update" style="display:none">
+        <div class="form-row three">
+          <div class="input-group">
+            <label>Ticker</label>
+            <input type="text" id="upd-ticker" placeholder="AMZN" maxlength="6"/>
+          </div>
+          <div class="input-group">
+            <label>Amount (USD)</label>
+            <input type="number" id="upd-amount" placeholder="100"/>
+          </div>
+          <div class="input-group">
+            <label>Price per share</label>
+            <input type="number" id="upd-price" placeholder="185.20" step="0.01"/>
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="input-group">
+            <label>Trade Type</label>
+            <select id="upd-type" style="background:var(--bg);border:1px solid var(--border);color:var(--text);font-family:var(--mono);font-size:13px;padding:10px 12px;outline:none;width:100%;">
+              <option value="B">BUY</option>
+              <option value="S">SELL</option>
+            </select>
+          </div>
+        </div>
+        <button class="run-btn upd" onclick="runCmd('update')">▶ RECORD TRADE</button>
+        <div class="result-box" id="result-update"></div>
+      </div>
+
+      <!-- FORM: CHECK -->
+      <div class="form-area" id="form-check" style="display:none">
+        <p style="font-size:11px;color:var(--muted);letter-spacing:1px;margin-bottom:16px;">
+          Fetches live prices from Yahoo Finance and calculates your current P&amp;L across all holdings.
+        </p>
+        <button class="run-btn chk" onclick="runCmd('check')">▶ LOAD PORTFOLIO</button>
+        <div class="result-box" id="result-check"></div>
+      </div>
+
+    </div>
+
+    <!-- RIGHT: HISTORY -->
+    <div class="right-panel">
+      <div class="section-header">
+        <div class="section-tag" style="color:var(--accent2);border-color:var(--accent2)">02</div>
+        <div class="section-title">Session Log</div>
+      </div>
+      <div class="history-list" id="history-list">
+        <div class="empty-history">NO COMMANDS YET<br/>// RUN A COMMAND TO BEGIN</div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+  const API_URL = '/api/query';
+  const CREDS = { username: 'tanaka00', password: 'Q1w2_e3r4' };
+  let currentCmd = null;
+  let history = [];
+
+  // ── AUTH ──────────────────────────
+  function doLogin() {
+    const u = document.getElementById('username').value.trim();
+    const p = document.getElementById('password').value;
+    const err = document.getElementById('login-error');
+    if (u === CREDS.username && p === CREDS.password) {
+      document.getElementById('login-screen').style.display = 'none';
+      document.getElementById('dashboard').style.display = 'block';
+      err.style.display = 'none';
+    } else {
+      err.style.display = 'block';
+      document.getElementById('password').value = '';
+    }
+  }
+
+  function doLogout() {
+    document.getElementById('login-screen').style.display = 'flex';
+    document.getElementById('dashboard').style.display = 'none';
+    document.getElementById('username').value = '';
+    document.getElementById('password').value = '';
+    selectCmd(null);
+  }
+
+  // Enter key on login
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && document.getElementById('login-screen').style.display !== 'none') {
+      doLogin();
+    }
+  });
+
+  // ── CMD SELECTION ─────────────────
+  function selectCmd(cmd) {
+    currentCmd = cmd;
+    ['buy','sell','update','check'].forEach(c => {
+      document.getElementById('form-' + c).style.display = 'none';
+      document.querySelector('.cmd-card.' + (c === 'update' ? 'upd' : c === 'check' ? 'chk' : c))
+              .classList.remove('active');
+    });
+    if (!cmd) return;
+    document.getElementById('form-' + cmd).style.display = 'block';
+    const map = { buy: 'buy', sell: 'sell', update: 'upd', check: 'chk' };
+    document.querySelector('.cmd-card.' + map[cmd]).classList.add('active');
+  }
+
+  // ── RUN COMMAND ───────────────────
+  async function runCmd(cmd) {
+    let message = '';
+    let resultId = 'result-' + cmd;
+    const box = document.getElementById(resultId);
+
+    if (cmd === 'buy') {
+      const ticker = document.getElementById('buy-ticker').value.trim().toUpperCase();
+      const amount = document.getElementById('buy-amount').value.trim();
+      if (!ticker || !amount) return alert('Fill in Ticker and Amount');
+      message = `BUY ${ticker} ${amount}`;
+    } else if (cmd === 'sell') {
+      const ticker = document.getElementById('sell-ticker').value.trim().toUpperCase();
+      const amount = document.getElementById('sell-amount').value.trim();
+      if (!ticker || !amount) return alert('Fill in Ticker and Amount');
+      message = `SELL ${ticker} ${amount}`;
+    } else if (cmd === 'update') {
+      const ticker = document.getElementById('upd-ticker').value.trim().toUpperCase();
+      const amount = document.getElementById('upd-amount').value.trim();
+      const price  = document.getElementById('upd-price').value.trim();
+      const type   = document.getElementById('upd-type').value;
+      if (!ticker || !amount || !price) return alert('Fill in all fields');
+      message = `UPDATE ${ticker} ${type}${amount} ${price}`;
+    } else if (cmd === 'check') {
+      message = 'CHECK';
+    }
+
+    box.className = 'result-box show loading';
+    box.textContent = '';
+
+    try {
+      const resp = await fetch(API_URL + '?message=' + encodeURIComponent(message));
+      const data = await resp.json();
+      box.className = 'result-box show';
+      box.textContent = data.message || '⚠️ No response from server.';
+      addHistory(cmd, message, data.message || '');
+    } catch (err) {
+      box.className = 'result-box show';
+      box.textContent = '⚠️ Network error: ' + err.message + '\n\nMake sure the GAS script is deployed and accessible.';
+    }
+  }
+
+  // ── SESSION HISTORY ───────────────
+  function addHistory(cmd, msg, result) {
+    const listEl = document.getElementById('history-list');
+    if (listEl.querySelector('.empty-history')) listEl.innerHTML = '';
+
+    const map = { buy: 'buy-h', sell: 'sell-h', update: 'upd-h', check: 'chk-h' };
+    const labels = { buy: '📈 BUY', sell: '📉 SELL', update: '📝 UPDATE', check: '💼 CHECK' };
+    const time = new Date().toLocaleTimeString('en-US', {hour12: false});
+
+    const item = document.createElement('div');
+    item.className = 'history-item ' + map[cmd];
+    item.innerHTML = `
+      <div class="h-cmd">${labels[cmd]}</div>
+      <div class="h-time">// ${time} — ${msg}</div>
+      <div class="h-result">${result}</div>
+    `;
+    listEl.insertBefore(item, listEl.firstChild);
+  }
+</script>
+</body>
+</html>
