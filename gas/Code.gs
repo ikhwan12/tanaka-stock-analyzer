@@ -754,7 +754,7 @@ function portfolio(username) {
   if (tickers.length === 0) return json({ message: '💼 Portfolio is empty.\n\nRecord trades with:\nUPDATE AMZN B100 185.20', positions: [] });
 
   let lines = ['💼 PORTFOLIO — ' + (username || 'all'), '─────────────────────'];
-  let totalInvested = 0, totalValue = 0;
+  let totalInvested = 0, totalValue = 0, totalRealizedPnl = 0;
   const positions = [];
 
   for (const ticker of tickers) {
@@ -762,7 +762,8 @@ function portfolio(username) {
 
     // Closed position — show realized P&L, no live price needed
     if (h.closed || h.shares <= 0.1) {
-      const rpnl    = h.realizedPnl || 0;
+      const rpnl = h.realizedPnl || 0;
+      totalRealizedPnl += rpnl;  // ← add to grand total
       positions.push({ ticker, shares: 0, closed: true, realizedPnl: +rpnl.toFixed(2) });
       lines.push(`${ticker} [CLOSED]\n  Realized P&L: ${rpnl >= 0 ? '+' : ''}$${rpnl.toFixed(2)} ${rpnl >= 0 ? '📈' : '📉'}`);
       continue;
@@ -781,13 +782,17 @@ function portfolio(username) {
     lines.push(`${ticker}\n  ${h.shares.toFixed(4)} sh @ avg $${avgCost.toFixed(2)}\n  Now: $${price.toFixed(2)}\n  P&L: ${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)} (${pnlPct.toFixed(1)}%) ${pnl >= 0 ? '📈' : '📉'}`);
   }
 
-  const totalPnl    = totalValue - totalInvested;
+  const openPnl     = totalValue - totalInvested;
+  const totalPnl    = openPnl + totalRealizedPnl;
   const totalPnlPct = totalInvested > 0 ? (totalPnl / totalInvested * 100).toFixed(1) : '0.0';
   lines.push('─────────────────────');
   lines.push('Invested: $' + totalInvested.toFixed(2));
   lines.push('Value:    $' + totalValue.toFixed(2));
-  lines.push('P&L: ' + (totalPnl >= 0 ? '+' : '') + '$' + totalPnl.toFixed(2) + ' (' + totalPnlPct + '%)');
-  return json({ message: lines.join('\n'), positions, totalInvested: +totalInvested.toFixed(2), totalValue: +totalValue.toFixed(2), totalPnl: +totalPnl.toFixed(2) });
+  if (totalRealizedPnl !== 0) {
+    lines.push('Realized: ' + (totalRealizedPnl >= 0 ? '+' : '') + '$' + totalRealizedPnl.toFixed(2));
+  }
+  lines.push('Total P&L: ' + (totalPnl >= 0 ? '+' : '') + '$' + totalPnl.toFixed(2));
+  return json({ message: lines.join('\n'), positions, totalInvested: +totalInvested.toFixed(2), totalValue: +totalValue.toFixed(2), totalPnl: +totalPnl.toFixed(2), totalRealizedPnl: +totalRealizedPnl.toFixed(2) });
 }
 
 // ══════════════════════════════════════════════
