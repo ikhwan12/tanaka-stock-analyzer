@@ -36,7 +36,6 @@ export default async function handler(req, res) {
           { command: 'check',     description: 'View portfolio and P&L' },
           { command: 'watchlist', description: 'Manage watchlist — WATCHLIST SCAN' },
           { command: 'register',  description: 'Register for full access' }
-          { command: 'register',  description: 'Get full access — registration info' }
         ]
       })
     });
