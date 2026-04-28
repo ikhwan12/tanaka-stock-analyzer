@@ -715,21 +715,42 @@ function getUserHoldings(username) {
   const aIdx    = h.indexOf('amount_usd');
   const sIdx    = h.indexOf('shares');
   const result  = {};
+
   rows.slice(1).forEach(r => {
     const rowUser = uIdx >= 0 ? String(r[uIdx]).trim() : 'tanaka00';
     if (username && rowUser !== username) return;
     const ticker = String(r[tIdx]).trim();
     const type   = String(r[typeIdx]).trim();
-    if (!result[ticker]) result[ticker] = { shares: 0, invested: 0 };
-    if (type === 'BUY') { result[ticker].shares += +r[sIdx]; result[ticker].invested += +r[aIdx]; }
-    else                { result[ticker].shares -= +r[sIdx]; result[ticker].invested -= +r[aIdx]; }
+    const amount = +r[aIdx];
+    const shares = +r[sIdx];
+
+    if (!result[ticker]) result[ticker] = { shares: 0, invested: 0, realizedPnl: 0, closed: false };
+
+    if (type === 'BUY') {
+      result[ticker].shares   += shares;
+      result[ticker].invested += amount;
+    } else {
+      // Proportional cost basis reduction
+      const avgCost = result[ticker].shares > 0 ? result[ticker].invested / result[ticker].shares : 0;
+      const costOfSharesSold = avgCost * shares;
+      const sellRevenue      = amount; // what we actually got
+      result[ticker].realizedPnl += sellRevenue - costOfSharesSold;
+      result[ticker].invested    -= costOfSharesSold;
+      result[ticker].shares      -= shares;
+      // Mark as closed if shares near zero
+      if (result[ticker].shares < 0.001) {
+        result[ticker].shares   = 0;
+        result[ticker].invested = 0;
+        result[ticker].closed   = true;
+      }
+    }
   });
   return result;
 }
 
 function portfolio(username) {
   const holdings = getUserHoldings(username);
-  const tickers  = Object.keys(holdings).filter(t => holdings[t].shares > 0.0001);
+  const tickers  = Object.keys(holdings).filter(t => holdings[t].shares > 0.0001 || holdings[t].closed);
   if (tickers.length === 0) return json({ message: '💼 Portfolio is empty.\n\nRecord trades with:\nUPDATE AMZN B100 185.20', positions: [] });
 
   let lines = ['💼 PORTFOLIO — ' + (username || 'all'), '─────────────────────'];
@@ -738,6 +759,15 @@ function portfolio(username) {
 
   for (const ticker of tickers) {
     const h = holdings[ticker];
+
+    // Closed position — show realized P&L, no live price needed
+    if (h.closed || h.shares < 0.001) {
+      const rpnl    = h.realizedPnl || 0;
+      positions.push({ ticker, shares: 0, closed: true, realizedPnl: +rpnl.toFixed(2) });
+      lines.push(`${ticker} [CLOSED]\n  Realized P&L: ${rpnl >= 0 ? '+' : ''}$${rpnl.toFixed(2)} ${rpnl >= 0 ? '📈' : '📉'}`);
+      continue;
+    }
+
     let price;
     try { const c = fetchPrices(ticker); price = c[c.length - 1]; }
     catch (_) { lines.push(ticker + ' │ ⚠️ Price unavailable'); continue; }
@@ -747,7 +777,7 @@ function portfolio(username) {
     const pnlPct  = pnl / h.invested * 100;
     totalInvested += h.invested;
     totalValue    += value;
-    positions.push({ ticker, shares: +h.shares.toFixed(4), avgCost: +avgCost.toFixed(2), currentPrice: +price.toFixed(2), value: +value.toFixed(2), pnl: +pnl.toFixed(2), pnlPct: +pnlPct.toFixed(1) });
+    positions.push({ ticker, shares: +h.shares.toFixed(4), avgCost: +avgCost.toFixed(2), currentPrice: +price.toFixed(2), value: +value.toFixed(2), pnl: +pnl.toFixed(2), pnlPct: +pnlPct.toFixed(1), closed: false });
     lines.push(`${ticker}\n  ${h.shares.toFixed(4)} sh @ avg $${avgCost.toFixed(2)}\n  Now: $${price.toFixed(2)}\n  P&L: ${pnl >= 0 ? '+' : ''}$${pnl.toFixed(2)} (${pnlPct.toFixed(1)}%) ${pnl >= 0 ? '📈' : '📉'}`);
   }
 
