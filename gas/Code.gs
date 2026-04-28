@@ -458,7 +458,7 @@ RSI(14): ${rsi.toFixed(1)}  ${rsiOk ? '✅' : '❌'} (need < 35)
 Fee:       $${fee.toFixed(2)} (GoTrade 0.3%)
 Target:    $${target.toFixed(2)}
 Stop-loss: $${stopLoss.toFixed(2)}
-Est. net:  +${netRet}%
+Est. net:  ${parseFloat(netRet) >= 0 ? '+' : ''}${netRet}%
 ─────────────────────
 ${signal}` });
 }
