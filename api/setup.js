@@ -34,7 +34,9 @@ export default async function handler(req, res) {
           { command: 'sell',      description: 'Smart sell analysis — SELL TICKER AMOUNT' },
           { command: 'update',    description: 'Record a trade — UPDATE TICKER B100 185.20' },
           { command: 'check',     description: 'View portfolio and P&L' },
-          { command: 'watchlist', description: 'Manage watchlist — WATCHLIST SCAN' }
+          { command: 'watchlist', description: 'Manage watchlist — WATCHLIST SCAN' },
+          { command: 'register',  description: 'Register for full access' }
+          { command: 'register',  description: 'Get full access — registration info' }
         ]
       })
     });

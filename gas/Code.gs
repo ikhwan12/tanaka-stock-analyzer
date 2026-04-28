@@ -34,26 +34,27 @@ function doGet(e) {
 // ══════════════════════════════════════════════
 //  MESSAGE ROUTER
 // ══════════════════════════════════════════════
-function handleMessage(raw, chatId) {
+function handleMessage(raw, chatId, tgUsername, tgId) {
   // Normalize: strip slash, strip @botname, uppercase first word
   const parts   = raw.trim().split(/\s+/);
   const cmd     = parts[0].toUpperCase().replace(/^\//, '').split('@')[0];
   const hasArgs = parts.length > 1;
 
   // ── Always-public commands ──
-  if (cmd === 'START') return sendWelcome(chatId);
-  if (cmd === 'HELP')  return sendHelp(chatId);
+  if (cmd === 'START')    return sendWelcome(chatId, tgUsername);
+  if (cmd === 'HELP')     return sendHelp(chatId);
+  if (cmd === 'REGISTER') return sendRegisterInfo();
 
   // ── Menu taps with NO args → show instruction prompt ──
   if (!hasArgs) {
     if (cmd === 'LOGIN' || cmd === 'AUTH') return promptLogin();
     if (cmd === 'LOGOUT')    return handleLogout(chatId);
+    if (cmd === 'REGISTER')  return sendRegisterInfo();
     if (cmd === 'BUY')       return promptBuy();
     if (cmd === 'SELL')      return promptSell();
     if (cmd === 'UPDATE')    return promptUpdate();
-    if (cmd === 'CHECK')     return runCheck(chatId);       // CHECK needs no args
+    if (cmd === 'CHECK')     return runCheck(chatId, tgUsername, tgId);
     if (cmd === 'WATCHLIST') return promptWatchlist();
-    // Unknown single-word → help
     return sendHelp(chatId);
   }
 
@@ -61,14 +62,36 @@ function handleMessage(raw, chatId) {
   if (cmd === 'LOGIN' || cmd === 'AUTH') return handleLogin(parts, chatId);
   if (cmd === 'LOGOUT') return handleLogout(chatId);
 
-  // ── Auth wall for all other commands ──
+  // ── Auth wall + free usage tracking ──
   const session = getSession(chatId);
   if (chatId && !session) {
-    return json({ message:
+    // Track and limit free usage for unauthenticated Telegram users
+    if (tgUsername || tgId) {
+      const usageResult = checkAndIncrementUsage(tgUsername, tgId, chatId);
+      if (!usageResult.allowed) {
+        return json({ message:
+`⏰ You've used your 5 free analyses!
+
+To continue, please register for full access.
+
+Tap /register to learn more or type REGISTER.` });
+      }
+      // Show remaining uses on first few uses
+      if (usageResult.count <= 5 && usageResult.count >= 4) {
+        // Will prepend warning to response — handled in each command
+      }
+    } else {
+      // Web app — no chatId, just block
+      return json({ message:
 `🔒 You are not logged in.
 
-Tap LOGIN or type:
-LOGIN username password` });
+Please login first.` });
+    }
+  }
+
+  // Store Telegram username in session if logged in
+  if (session && tgUsername && !session.tgUsername) {
+    updateSessionTgUsername(chatId, tgUsername);
   }
 
   // Username priority: 1) Telegram session, 2) embedded in message (web app)
@@ -123,9 +146,18 @@ LOGIN username password` });
   return json({ message: `❓ Unknown command: ${cmd}\n\nTap /help to see all commands.` });
 }
 
-function runCheck(chatId) {
+function runCheck(chatId, tgUsername, tgId) {
   const session = getSession(chatId);
-  if (chatId && !session) return json({ message: '🔒 You are not logged in.\n\nTap LOGIN or type:\nLOGIN username password' });
+  if (chatId && !session) {
+    if (tgUsername || tgId) {
+      const usageResult = checkAndIncrementUsage(tgUsername, tgId, chatId);
+      if (!usageResult.allowed) {
+        return json({ message: '⏰ You\'ve used your 5 free analyses!\n\nTap /register to learn more.' });
+      }
+    } else {
+      return json({ message: '🔒 You are not logged in.\n\nTap LOGIN or type:\nLOGIN username password' });
+    }
+  }
   return portfolio(session ? session.username : '');
 }
 
@@ -259,16 +291,33 @@ Tap LOGIN to sign back in.` });
 // ══════════════════════════════════════════════
 //  WELCOME & HELP
 // ══════════════════════════════════════════════
-function sendWelcome(chatId) {
+function sendWelcome(chatId, tgUsername) {
   const session = getSession(chatId);
+  let usageInfo = '';
+  if (!session && tgUsername) {
+    const sheet = getUsageSheet();
+    const rows  = sheet.getDataRange().getValues();
+    for (let i = 1; i < rows.length; i++) {
+      if (String(rows[i][1]).trim() === tgUsername) {
+        const used = parseInt(rows[i][2] || 0);
+        const remaining = Math.max(0, 5 - used);
+        usageInfo = remaining > 0
+          ? `\n🆓 Free analyses remaining: ${remaining}/5`
+          : '\n⏰ Free analyses used up — type REGISTER';
+        break;
+      }
+    }
+    if (!usageInfo) usageInfo = '\n🆓 Free analyses remaining: 5/5';
+  }
+
   return json({ message:
 `🏦 TANAKA US STOCK TERMINAL
 
-${session ? '✅ Logged in as: ' + session.username.toUpperCase() : '🔒 Not logged in'}
+${session ? '✅ Logged in as: ' + session.username.toUpperCase() : '🔒 Not logged in' + usageInfo}
 
 ${session
   ? 'Tap any command from the menu\nor type HELP to see all options.'
-  : 'To get started, tap LOGIN\nor type: LOGIN username password'}
+  : 'To get started, tap LOGIN\nor type: LOGIN username password\n\nType REGISTER to learn about full access.'}
 
 Powered by Yahoo Finance 📊` });
 }
@@ -745,6 +794,114 @@ function testSetup() {
   } catch(e) {
     Logger.log('Error: ' + e.toString());
   }
+}
+
+
+// ══════════════════════════════════════════════
+//  FREE USAGE TRACKING (5 free per Telegram user)
+// ══════════════════════════════════════════════
+function getUsageSheet() {
+  const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  let s    = ss.getSheetByName('usage');
+  if (!s) {
+    s = ss.insertSheet('usage');
+    s.appendRow(['telegram_id', 'telegram_username', 'use_count', 'first_used', 'last_used', 'chat_id']);
+  }
+  return s;
+}
+
+function checkAndIncrementUsage(tgUsername, tgId, chatId) {
+  const FREE_LIMIT = 5;
+  const sheet = getUsageSheet();
+  const rows  = sheet.getDataRange().getValues();
+
+  // Find existing row by tgId or tgUsername
+  for (let i = 1; i < rows.length; i++) {
+    const rowId   = String(rows[i][0]).trim();
+    const rowUser = String(rows[i][1]).trim();
+    if ((tgId && rowId === tgId) || (tgUsername && rowUser === tgUsername)) {
+      const count = parseInt(rows[i][2] || 0) + 1;
+      // Update row
+      sheet.getRange(i + 1, 1, 1, 6).setValues([[
+        tgId || rowId,
+        tgUsername || rowUser,
+        count,
+        rows[i][3] || new Date().toISOString(),
+        new Date().toISOString(),
+        chatId
+      ]]);
+      return { allowed: count <= FREE_LIMIT, count, remaining: Math.max(0, FREE_LIMIT - count) };
+    }
+  }
+
+  // New user — first use
+  sheet.appendRow([tgId, tgUsername, 1, new Date().toISOString(), new Date().toISOString(), chatId]);
+  return { allowed: true, count: 1, remaining: FREE_LIMIT - 1 };
+}
+
+function updateSessionTgUsername(chatId, tgUsername) {
+  try {
+    const sheet = getSessionSheet();
+    const rows  = sheet.getDataRange().getValues();
+    const headers = rows[0];
+    // Add tgUsername column if not exists
+    let tgCol = headers.indexOf('tg_username');
+    if (tgCol === -1) {
+      sheet.getRange(1, headers.length + 1).setValue('tg_username');
+      tgCol = headers.length;
+    }
+    for (let i = 1; i < rows.length; i++) {
+      if (String(rows[i][0]).trim() === String(chatId).trim()) {
+        sheet.getRange(i + 1, tgCol + 1).setValue(tgUsername);
+        return;
+      }
+    }
+  } catch(e) { /* non-critical */ }
+}
+
+// ══════════════════════════════════════════════
+//  REGISTER COMMAND
+// ══════════════════════════════════════════════
+function sendRegisterInfo() {
+  return json({ message:
+`🌟 JOIN TANAKA STOCK TERMINAL
+
+You've been enjoying the free analysis tools —
+thank you for being here! 🙏
+
+To continue with full, unlimited access,
+we warmly invite you to support this project.
+
+━━━━━━━━━━━━━━━━━━━━━
+📬 Contact for Registration:
+    @ikhwantan on Telegram
+
+💝 One-time contribution: IDR 49,000
+━━━━━━━━━━━━━━━━━━━━━
+
+Think of it less as a fee and more as
+a small act of kindness — a way to help
+keep this project alive and growing for
+everyone who uses it.
+
+What you get:
+✅ Unlimited BUY/SELL analysis
+✅ Portfolio tracking
+✅ Watchlist scanning
+✅ Access to all future features
+✅ Lifetime access*
+
+*As long as the project continues to run.
+We'll always do our best to keep it going,
+but we can't make promises about forever —
+technology changes, and so does life.
+
+📋 Please note: Contributions are
+non-refundable, as they go directly toward
+maintaining and improving this project.
+
+━━━━━━━━━━━━━━━━━━━━━
+Ready? Just message @ikhwantan 😊` });
 }
 
 // ══════════════════════════════════════════════
