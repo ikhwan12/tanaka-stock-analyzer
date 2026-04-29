@@ -130,7 +130,7 @@ function handleMessage(raw, chatId, tgUsername, tgId) {
     if (cmd === 'BUY')       return promptBuy();
     if (cmd === 'SELL')      return promptSell();
     if (cmd === 'UPDATE')    return promptUpdate();
-    if (cmd === 'CHECK')     return runCheck(chatId, tgUsername, tgId);
+    if (cmd === 'CHECK')     return runCheck(chatId, tgUsername, tgId, sessionUser);
     if (cmd === 'WATCHLIST') return promptWatchlist();
     return sendHelp(chatId);
   }
@@ -140,7 +140,7 @@ function handleMessage(raw, chatId, tgUsername, tgId) {
   if (cmd === 'LOGOUT') return handleLogout(chatId);
 
   // ── Auth wall + free usage tracking ──
-  const session   = getSession(chatId);
+  const session    = getSession(chatId);
   const isTelegram = !!chatId; // chatId always present for Telegram, empty for web
 
   if (!session) {
@@ -159,13 +159,14 @@ To keep going, get full access:
 Contact @ikhwantan for registration.
 One-time contribution: IDR 49,000` });
       }
-      // Warn when running low
-      if (usageResult.remaining === 1) {
-        // Will show warning — append after command runs
-      }
     } else {
-      // Web app — must be logged in
-      return json({ message: '🔒 You are not logged in. Please login first.' });
+      // Web app — validate by checking username exists in users sheet
+      // Web app embeds username in message: BUY AMZN 100 username
+      const webUser = parts[parts.length - 1] || '';
+      if (!webUser || !isValidUser(webUser)) {
+        return json({ message: '🔒 You are not logged in. Please login first.' });
+      }
+      // Valid web user — continue (username validated)
     }
   }
 
@@ -194,8 +195,10 @@ One-time contribution: IDR 49,000` });
     return recordTrade(parts[1].toUpperCase(), parts[2][0].toUpperCase(), parseFloat(parts[2].slice(1)), parseFloat(parts[3]), uUpd);
   }
   if (cmd === 'CHECK') {
+    // Telegram: CHECK (username from session)
+    // Web app:  CHECK username (parts[1] = username)
     const uChk = sessionUser || parts[1] || '';
-    return portfolio(uChk);
+    return runCheck(chatId, tgUsername, tgId, uChk);
   }
   if (cmd === 'PROFILE' || cmd === 'PROFILE') {
     const uPro = sessionUser || parts[2] || '';
@@ -257,7 +260,7 @@ One-time contribution: IDR 49,000` });
   return json({ message: `❓ Unknown command: ${cmd}\n\nTap /help to see all commands.` });
 }
 
-function runCheck(chatId, tgUsername, tgId) {
+function runCheck(chatId, tgUsername, tgId, webUsername) {
   const session    = getSession(chatId);
   const isTelegram = !!chatId;
   if (!session) {
@@ -267,10 +270,12 @@ function runCheck(chatId, tgUsername, tgId) {
         return json({ message: '⏰ FREE LIMIT REACHED\n\nYou\'ve used all 5 free analyses.\n\nTap /register for full access.\nContact @ikhwantan — IDR 49,000 one-time.' });
       }
     } else {
-      return json({ message: '🔒 You are not logged in.\n\nPlease login first.' });
+      if (!webUsername || !isValidUser(webUsername)) {
+        return json({ message: '🔒 You are not logged in. Please login first.' });
+      }
     }
   }
-  return portfolio(session ? session.username : '');
+  return portfolio(session ? session.username : webUsername || '');
 }
 
 // ══════════════════════════════════════════════
@@ -1377,6 +1382,23 @@ Start recording new trades with UPDATE.` });
 // ══════════════════════════════════════════════
 //  HELPER
 // ══════════════════════════════════════════════
+
+// Check if a username exists in the users sheet (for web app auth)
+function isValidUser(username) {
+  if (!username) return false;
+  try {
+    const ss    = SpreadsheetApp.openById(SPREADSHEET_ID);
+    const sheet = ss.getSheetByName('users');
+    if (!sheet) return false;
+    const rows    = sheet.getDataRange().getValues();
+    const headers = rows[0].map(h => String(h).trim().toLowerCase());
+    const uCol    = Math.max(headers.indexOf('username'), 0);
+    return rows.slice(1).some(r =>
+      String(r[uCol]).trim().toLowerCase() === String(username).trim().toLowerCase()
+    );
+  } catch(e) { return false; }
+}
+
 function json(data) {
   return ContentService
     .createTextOutput(JSON.stringify(data))
