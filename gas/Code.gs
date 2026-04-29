@@ -293,8 +293,8 @@ BUY TICKER AMOUNT
 Example:
 BUY AMZN 100
 
-This will check Z-score, RSI,
-fee impact, and give a signal.` });
+This checks price momentum and drift,
+then gives you a clear signal.` });
 }
 
 function promptSell() {
@@ -940,15 +940,20 @@ function watchlistScan(username) {
 // ══════════════════════════════════════════════
 function setTelegramCommands() {
   const commands = [
-    { command: 'start',     description: 'Welcome & status' },
+    { command: 'register',  description: '🌟 Get Full Access — Support this project' },
+    { command: 'start',     description: 'Welcome & login status' },
     { command: 'help',      description: 'Show all commands' },
-    { command: 'login',     description: 'Sign in to the bot' },
+    { command: 'login',     description: 'Sign in — LOGIN username password' },
     { command: 'logout',    description: 'Sign out' },
-    { command: 'buy',       description: 'Analyze buy signal' },
-    { command: 'sell',      description: 'Smart sell analysis' },
-    { command: 'update',    description: 'Record a trade' },
-    { command: 'check',     description: 'View portfolio and P&L' },
-    { command: 'watchlist', description: 'Manage and scan watchlist' }
+    { command: 'buy',       description: 'Check buy signal — BUY TICKER AMOUNT' },
+    { command: 'sell',      description: 'Check sell signal — SELL TICKER AMOUNT' },
+    { command: 'update',    description: 'Record a trade — UPDATE TICKER B100 185.20' },
+    { command: 'check',     description: 'View portfolio & P&L' },
+    { command: 'watchlist', description: 'Manage & scan watchlist' },
+    { command: 'profile',   description: 'Set risk level — LOW / MEDIUM / HIGH' },
+    { command: 'explain',   description: 'Understand results — EXPLAIN BUY or SELL' },
+    { command: 'balance',   description: 'Set initial balance — BALANCE 1000' },
+    { command: 'clear',     description: 'Reset portfolio — CLEAR YES' }
   ];
   const resp = UrlFetchApp.fetch(
     'https://api.telegram.org/bot' + BOT_TOKEN + '/setMyCommands',
@@ -1171,9 +1176,10 @@ how sensitive these signals are.` });
 // ══════════════════════════════════════════════
 function sendRegisterInfo() {
   return json({ message:
-`╔═══════════════════════╗
-║   🚀 GET FULL ACCESS   ║
-╚═══════════════════════╝
+`🌟✨ GET FULL ACCESS ✨🌟
+━━━━━━━━━━━━━━━━━━━━━━━━
+ Support Tanaka Stock Terminal
+━━━━━━━━━━━━━━━━━━━━━━━━
 
 Hey! You've been using Tanaka Stock Terminal
 and we're glad it's been helpful 🙏
