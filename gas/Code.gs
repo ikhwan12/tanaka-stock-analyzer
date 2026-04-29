@@ -777,6 +777,7 @@ function recordTrade(ticker, tradeType, amount, price, username) {
     sheet.appendRow(['date', 'username', 'ticker', 'type', 'amount_usd', 'price', 'shares', 'fee']);
   }
   sheet.appendRow([date, username || 'tanaka00', ticker, type, amount, price, +shares.toFixed(6), +fee.toFixed(2)]);
+  SpreadsheetApp.flush(); // Force write to complete immediately
   return json({ message:
 `✅ TRADE RECORDED
 ─────────────────────
@@ -790,6 +791,7 @@ Date:   ${date}` });
 }
 
 function getUserHoldings(username) {
+  SpreadsheetApp.flush(); // Ensure all pending writes are committed before reading
   const ss    = SpreadsheetApp.openById(SPREADSHEET_ID);
   const sheet = ss.getSheetByName('transactions');
   if (!sheet || sheet.getLastRow() <= 1) return {};
