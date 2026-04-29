@@ -164,8 +164,23 @@ One-time contribution: IDR 49,000` });
       }
     } else {
       // Web app path — MUST be logged in, no free uses allowed
-      // Web app always appends username as last token: BUY AMZN 100 username
-      const webUser = parts[parts.length - 1] || '';
+      // Extract username based on command format:
+      // WATCHLIST ADD/REMOVE: parts[2] is username (ticker is last)
+      // BALANCE/CLEAR/PROFILE: parts[1] is username
+      // All others: last token is username
+      let webUser = '';
+      if (cmd === 'WATCHLIST') {
+        const sub = (parts[1] || '').toUpperCase();
+        if (sub === 'ADD' || sub === 'REMOVE') {
+          webUser = parts[2] || ''; // WATCHLIST ADD username TICKER
+        } else {
+          webUser = parts[parts.length - 1] || ''; // WATCHLIST LIST/SCAN username
+        }
+      } else if (cmd === 'BALANCE' || cmd === 'CLEAR' || cmd === 'PROFILE') {
+        webUser = parts[1] || ''; // BALANCE username / CLEAR username YES
+      } else {
+        webUser = parts[parts.length - 1] || ''; // BUY/SELL/UPDATE/CHECK username
+      }
       if (!webUser || !isValidUser(webUser)) {
         return json({ success: false, unauthorized: true, message: '🔒 Please login to use this feature.' });
       }
