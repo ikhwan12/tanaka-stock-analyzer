@@ -611,9 +611,9 @@ async function doLogin(){
       // ✅ Success — redirect to dashboard
       currentUser=data.username;
       watchlist=data.watchlist?data.watchlist.split(',').map(t=>t.trim()).filter(Boolean):[];
-      const profile=data.profile||'MEDIUM';
+      const profile = data.profile || 'MEDIUM';
       saveSession(currentUser, watchlist, profile);
-      document.getElementById('profile-select').value=profile;
+      document.getElementById('profile-select').value = profile;
       err.style.display='none';
       document.getElementById('login-screen').style.display='none';
       document.getElementById('dashboard').style.display='block';
@@ -676,20 +676,24 @@ async function runBuy(){
 
 async function changeProfile(key) {
   const sel = document.getElementById('profile-select');
+  const prev = sel.value; // remember previous in case of error
   sel.disabled = true;
   try {
+    // Web app format: PROFILE KEY username
     const d = await callAPI('PROFILE ' + key + ' ' + currentUser);
     if (d.message && d.message.includes('✅')) {
-      // Save profile to localStorage
-      const s = loadSession();
-      if (s) { s.profile = key; saveSession(s.username, s.watchlist, key); }
-    } else {
-      alert(d.message || 'Failed to update profile');
-      // Revert select
-      const s = loadSession();
-      sel.value = s && s.profile ? s.profile : 'MEDIUM';
+      saveSession(currentUser, watchlist, key);
+    } else if (d.message) {
+      alert(d.message);
+      sel.value = prev; // revert
+      saveSession(currentUser, watchlist, prev);
     }
-  } catch(e) { alert('Error: ' + e.message); }
+  } catch(e) {
+    if (e.message !== 'unauthorized') {
+      alert('Could not update profile: ' + e.message);
+      sel.value = prev;
+    }
+  }
   sel.disabled = false;
 }
 

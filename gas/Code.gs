@@ -176,7 +176,9 @@ One-time contribution: IDR 49,000` });
         } else {
           webUser = parts[parts.length - 1] || ''; // WATCHLIST LIST/SCAN username
         }
-      } else if (cmd === 'BALANCE' || cmd === 'CLEAR' || cmd === 'PROFILE') {
+      } else if (cmd === 'PROFILE') {
+        webUser = parts[2] || ''; // PROFILE KEY username → username at parts[2]
+      } else if (cmd === 'BALANCE' || cmd === 'CLEAR') {
         webUser = parts[1] || ''; // BALANCE username / CLEAR username YES
       } else {
         webUser = parts[parts.length - 1] || ''; // BUY/SELL/UPDATE/CHECK username
@@ -579,17 +581,19 @@ function checkCredentials(username, password) {
     s.appendRow(['tanaka00', 'Q1w2_e3r4', 'AMZN,AAPL,NVDA']);
   }
 
-  const rows    = s.getDataRange().getValues().slice(1);
-  const headers = s.getDataRange().getValues()[0].map(h => String(h).trim().toLowerCase());
+  const allRows = s.getDataRange().getValues();
+  const headers = allRows[0].map(h => String(h).trim().toLowerCase());
   const uCol  = Math.max(headers.indexOf('username'), 0);
   const pCol  = headers.indexOf('password') >= 0 ? headers.indexOf('password') : 1;
   const wCol  = headers.indexOf('watchlist') >= 0 ? headers.indexOf('watchlist') : 2;
   const prCol = headers.indexOf('risk_profile');
-  for (const r of rows) {
+  for (let i = 1; i < allRows.length; i++) {
+    const r = allRows[i];
     const u = String(r[uCol]).trim();
     const p = String(r[pCol]).trim();
     if (u.toLowerCase() === String(username).trim().toLowerCase() && p === String(password).trim()) {
-      const profile = prCol >= 0 ? (String(r[prCol]).trim().toUpperCase() || 'MEDIUM') : 'MEDIUM';
+      const rawProfile = prCol >= 0 ? String(r[prCol] || '').trim().toUpperCase() : '';
+      const profile    = ['LOW','MEDIUM','HIGH'].includes(rawProfile) ? rawProfile : 'MEDIUM';
       return { success: true, username: u, watchlist: String(r[wCol] || ''), profile };
     }
   }
