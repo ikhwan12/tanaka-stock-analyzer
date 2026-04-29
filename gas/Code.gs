@@ -165,9 +165,7 @@ One-time contribution: IDR 49,000` });
       }
     } else {
       // Web app — must be logged in
-      return json({ message: '🔒 You are not logged in.
-
-Please login first.' });
+      return json({ message: '🔒 You are not logged in. Please login first.' });
     }
   }
 
