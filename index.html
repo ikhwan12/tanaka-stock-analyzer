@@ -551,7 +551,7 @@ function clearSession() {
 }
 
 // ── Auto-restore session on page load ────────────────
-window.addEventListener('load', () => {
+window.addEventListener('load', async () => {
   const saved = loadSession();
   if (saved && saved.username) {
     currentUser = saved.username;
@@ -559,9 +559,22 @@ window.addEventListener('load', () => {
     document.getElementById('login-screen').style.display = 'none';
     document.getElementById('dashboard').style.display    = 'block';
     document.getElementById('topbar-username').textContent = currentUser.toUpperCase();
-      if (saved.profile) document.getElementById('profile-select').value = saved.profile;
+    if (saved.profile) document.getElementById('profile-select').value = saved.profile;
     renderWatchlistChips();
     loadPositions();
+    // Silently verify the session is still valid (user exists in Google Sheet)
+    try {
+      const r    = await fetch(API + '?message=' + encodeURIComponent('CHECK ' + currentUser));
+      const data = await r.json();
+      if (data && data.unauthorized) {
+        clearSession();
+        currentUser=''; watchlist=[]; positions={};
+        document.getElementById('dashboard').style.display='none';
+        document.getElementById('login-screen').style.display='flex';
+        document.getElementById('login-error').textContent='⚠ Session expired. Please sign in again.';
+        document.getElementById('login-error').style.display='block';
+      }
+    } catch(_) { /* network issue — keep showing dashboard */ }
   }
 });
 
@@ -569,8 +582,20 @@ document.addEventListener('keydown',e=>{if(e.key==='Enter'&&document.getElementB
 
 async function callAPI(msg){
   const r=await fetch(API+'?message='+encodeURIComponent(msg));
-  if(!r.ok)throw new Error('HTTP '+r.status);
-  return r.json();
+  if(!r.ok) throw new Error('HTTP '+r.status);
+  const data = await r.json();
+  // If GAS says unauthorized, force logout and show login screen
+  if(data && data.unauthorized){
+    console.warn('Unauthorized response — clearing session');
+    clearSession();
+    currentUser=''; watchlist=[]; positions={};
+    document.getElementById('login-screen').style.display='flex';
+    document.getElementById('dashboard').style.display='none';
+    document.getElementById('login-error').textContent='⚠ Session expired. Please sign in again.';
+    document.getElementById('login-error').style.display='block';
+    throw new Error('unauthorized');
+  }
+  return data;
 }
 
 async function doLogin(){

@@ -160,13 +160,13 @@ Contact @ikhwantan for registration.
 One-time contribution: IDR 49,000` });
       }
     } else {
-      // Web app — validate by checking username exists in users sheet
-      // Web app embeds username in message: BUY AMZN 100 username
+      // Web app path — MUST be logged in, no free uses allowed
+      // Web app always appends username as last token: BUY AMZN 100 username
       const webUser = parts[parts.length - 1] || '';
       if (!webUser || !isValidUser(webUser)) {
-        return json({ message: '🔒 You are not logged in. Please login first.' });
+        return json({ success: false, unauthorized: true, message: '🔒 Please login to use this feature.' });
       }
-      // Valid web user — continue (username validated)
+      // Valid web user — continue
     }
   }
 
