@@ -140,29 +140,34 @@ function handleMessage(raw, chatId, tgUsername, tgId) {
   if (cmd === 'LOGOUT') return handleLogout(chatId);
 
   // ── Auth wall + free usage tracking ──
-  const session = getSession(chatId);
-  if (chatId && !session) {
-    // Track and limit free usage for unauthenticated Telegram users
-    if (tgUsername || tgId) {
-      const usageResult = checkAndIncrementUsage(tgUsername, tgId, chatId);
+  const session   = getSession(chatId);
+  const isTelegram = !!chatId; // chatId always present for Telegram, empty for web
+
+  if (!session) {
+    if (isTelegram) {
+      // Telegram user not logged in — check free usage (tracked by chatId)
+      const usageResult = checkAndIncrementUsage(tgUsername, tgId || chatId, chatId);
       if (!usageResult.allowed) {
         return json({ message:
-`⏰ You've used your 5 free analyses!
+`⏰ FREE LIMIT REACHED
 
-To continue, please register for full access.
+You've used all 5 free analyses.
 
-Tap /register to learn more or type REGISTER.` });
+To keep going, get full access:
+👉 Tap /register
+
+Contact @ikhwantan for registration.
+One-time contribution: IDR 49,000` });
       }
-      // Show remaining uses on first few uses
-      if (usageResult.count <= 5 && usageResult.count >= 4) {
-        // Will prepend warning to response — handled in each command
+      // Warn when running low
+      if (usageResult.remaining === 1) {
+        // Will show warning — append after command runs
       }
     } else {
-      // Web app — no chatId, just block
-      return json({ message:
-`🔒 You are not logged in.
+      // Web app — must be logged in
+      return json({ message: '🔒 You are not logged in.
 
-Please login first.` });
+Please login first.' });
     }
   }
 
@@ -255,15 +260,16 @@ Please login first.` });
 }
 
 function runCheck(chatId, tgUsername, tgId) {
-  const session = getSession(chatId);
-  if (chatId && !session) {
-    if (tgUsername || tgId) {
-      const usageResult = checkAndIncrementUsage(tgUsername, tgId, chatId);
+  const session    = getSession(chatId);
+  const isTelegram = !!chatId;
+  if (!session) {
+    if (isTelegram) {
+      const usageResult = checkAndIncrementUsage(tgUsername, tgId || chatId, chatId);
       if (!usageResult.allowed) {
-        return json({ message: '⏰ You\'ve used your 5 free analyses!\n\nTap /register to learn more.' });
+        return json({ message: '⏰ FREE LIMIT REACHED\n\nYou\'ve used all 5 free analyses.\n\nTap /register for full access.\nContact @ikhwantan — IDR 49,000 one-time.' });
       }
     } else {
-      return json({ message: '🔒 You are not logged in.\n\nTap LOGIN or type:\nLOGIN username password' });
+      return json({ message: '🔒 You are not logged in.\n\nPlease login first.' });
     }
   }
   return portfolio(session ? session.username : '');
@@ -402,20 +408,25 @@ Tap LOGIN to sign back in.` });
 function sendWelcome(chatId, tgUsername) {
   const session = getSession(chatId);
   let usageInfo = '';
-  if (!session && tgUsername) {
+  if (!session && chatId) {
     const sheet = getUsageSheet();
     const rows  = sheet.getDataRange().getValues();
     for (let i = 1; i < rows.length; i++) {
-      if (String(rows[i][1]).trim() === tgUsername) {
-        const used = parseInt(rows[i][2] || 0);
+      const rowChatId  = String(rows[i][5] || '').trim();
+      const rowTgId    = String(rows[i][0] || '').trim();
+      const rowUser    = String(rows[i][1] || '').trim();
+      const match = (chatId && rowChatId === chatId)
+                 || (tgUsername && rowUser === tgUsername);
+      if (match) {
+        const used      = parseInt(rows[i][2] || 0);
         const remaining = Math.max(0, 5 - used);
         usageInfo = remaining > 0
-          ? `\n🆓 Free analyses remaining: ${remaining}/5`
-          : '\n⏰ Free analyses used up — type REGISTER';
+          ? `\n🆓 Free uses left: ${remaining}/5`
+          : '\n⏰ Free limit reached — /register for full access';
         break;
       }
     }
-    if (!usageInfo) usageInfo = '\n🆓 Free analyses remaining: 5/5';
+    if (!usageInfo) usageInfo = '\n🆓 Free uses left: 5/5';
   }
 
   return json({ message:
@@ -1003,27 +1014,35 @@ function checkAndIncrementUsage(tgUsername, tgId, chatId) {
   const sheet = getUsageSheet();
   const rows  = sheet.getDataRange().getValues();
 
-  // Find existing row by tgId or tgUsername
+  // Primary key: chatId (always present for Telegram)
+  // Secondary: tgId (numeric user ID), tgUsername (may be absent)
+  const primaryKey = chatId || tgId || tgUsername;
+
   for (let i = 1; i < rows.length; i++) {
-    const rowId   = String(rows[i][0]).trim();
-    const rowUser = String(rows[i][1]).trim();
-    if ((tgId && rowId === tgId) || (tgUsername && rowUser === tgUsername)) {
+    const rowChatId = String(rows[i][5] || '').trim();
+    const rowTgId   = String(rows[i][0] || '').trim();
+    const rowUser   = String(rows[i][1] || '').trim();
+
+    const match = (chatId && rowChatId === chatId)
+               || (tgId   && rowTgId   === tgId)
+               || (tgUsername && rowUser === tgUsername);
+
+    if (match) {
       const count = parseInt(rows[i][2] || 0) + 1;
-      // Update row
       sheet.getRange(i + 1, 1, 1, 6).setValues([[
-        tgId || rowId,
+        tgId || rowTgId,
         tgUsername || rowUser,
         count,
         rows[i][3] || new Date().toISOString(),
         new Date().toISOString(),
-        chatId
+        chatId || rowChatId
       ]]);
       return { allowed: count <= FREE_LIMIT, count, remaining: Math.max(0, FREE_LIMIT - count) };
     }
   }
 
   // New user — first use
-  sheet.appendRow([tgId, tgUsername, 1, new Date().toISOString(), new Date().toISOString(), chatId]);
+  sheet.appendRow([tgId || '', tgUsername || '', 1, new Date().toISOString(), new Date().toISOString(), chatId]);
   return { allowed: true, count: 1, remaining: FREE_LIMIT - 1 };
 }
 
