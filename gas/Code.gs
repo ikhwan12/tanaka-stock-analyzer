@@ -427,7 +427,7 @@ ${session
   ? 'Tap any command from the menu\nor type HELP to see all options.'
   : 'To get started, tap LOGIN\nor type: LOGIN username password\n\nType REGISTER to learn about full access.'}
 
-Powered by Yahoo Finance 📊` });
+` });
 }
 
 function sendHelp(chatId) {
@@ -1171,44 +1171,42 @@ how sensitive these signals are.` });
 // ══════════════════════════════════════════════
 function sendRegisterInfo() {
   return json({ message:
-`🌟 JOIN TANAKA STOCK TERMINAL
+`╔═══════════════════════╗
+║   🚀 GET FULL ACCESS   ║
+╚═══════════════════════╝
 
-You've been enjoying the free analysis tools —
-thank you for being here! 🙏
+Hey! You've been using Tanaka Stock Terminal
+and we're glad it's been helpful 🙏
 
-To continue with full, unlimited access,
-we warmly invite you to support this project.
-
-━━━━━━━━━━━━━━━━━━━━━
-📬 Contact for Registration:
-    @ikhwantan on Telegram
-
-💝 One-time contribution: IDR 49,000
-━━━━━━━━━━━━━━━━━━━━━
-
-Think of it less as a fee and more as
-a small act of kindness — a way to help
-keep this project alive and growing for
-everyone who uses it.
-
-What you get:
-✅ Unlimited BUY/SELL analysis
-✅ Portfolio tracking
+━━━━━━━━━━━━━━━━━━━━━━━━
+💎 WHAT YOU UNLOCK:
+━━━━━━━━━━━━━━━━━━━━━━━━
+✅ Unlimited buy/sell analysis
+✅ Full portfolio tracking & P&L
 ✅ Watchlist scanning
-✅ Access to all future features
+✅ Risk profile settings
+✅ All future features
 ✅ Lifetime access*
 
-*As long as the project continues to run.
-We'll always do our best to keep it going,
-but we can't make promises about forever —
-technology changes, and so does life.
+━━━━━━━━━━━━━━━━━━━━━━━━
+💝 ONE-TIME CONTRIBUTION
+━━━━━━━━━━━━━━━━━━━━━━━━
+IDR 49,000 — paid once, yours forever*
 
-📋 Please note: Contributions are
-non-refundable, as they go directly toward
-maintaining and improving this project.
+Think of it as a small act of support
+to keep this project alive and growing
+for everyone. Not a subscription. Not
+a recurring fee. Just once. 
 
-━━━━━━━━━━━━━━━━━━━━━
-Ready? Just message @ikhwantan 😊` });
+📬 Message to register:
+👉 @ikhwantan on Telegram
+
+━━━━━━━━━━━━━━━━━━━━━━━━
+*We'll always do our best to keep things
+running, but can't guarantee forever —
+contributions are non-refundable.
+
+Tap 👉 @ikhwantan to get started 😊` });
 }
 
 // ══════════════════════════════════════════════

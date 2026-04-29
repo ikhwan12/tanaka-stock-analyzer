@@ -26,20 +26,20 @@ export default async function handler(req, res) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         commands: [
+          { command: 'register',  description: '🌟 Get Full Access — Support this project' },
           { command: 'start',     description: 'Welcome and login status' },
           { command: 'help',      description: 'Show all commands' },
           { command: 'login',     description: 'Sign in — LOGIN username password' },
           { command: 'logout',    description: 'Sign out' },
-          { command: 'buy',       description: 'Analyze buy signal — BUY TICKER AMOUNT' },
-          { command: 'sell',      description: 'Smart sell analysis — SELL TICKER AMOUNT' },
+          { command: 'buy',       description: 'Check buy signal — BUY TICKER AMOUNT' },
+          { command: 'sell',      description: 'Smart sell check — SELL TICKER AMOUNT' },
           { command: 'update',    description: 'Record a trade — UPDATE TICKER B100 185.20' },
           { command: 'check',     description: 'View portfolio and P&L' },
           { command: 'watchlist', description: 'Manage watchlist — WATCHLIST SCAN' },
-          { command: 'profile',   description: 'Set risk profile — LOW / MEDIUM / HIGH' },
-          { command: 'explain',   description: 'What do results mean? EXPLAIN BUY or EXPLAIN SELL' },
-          { command: 'balance',   description: 'Set or view initial balance — BALANCE 1000' },
-          { command: 'clear',     description: 'Reset portfolio to initial balance' },
-          { command: 'register',  description: 'Register for full access' }
+          { command: 'profile',   description: 'Set risk level — PROFILE LOW / MEDIUM / HIGH' },
+          { command: 'explain',   description: 'Understand results — EXPLAIN BUY or SELL' },
+          { command: 'balance',   description: 'Set initial balance — BALANCE 1000' },
+          { command: 'clear',     description: 'Reset portfolio — CLEAR YES' }
         ]
       })
     });
