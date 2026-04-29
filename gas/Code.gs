@@ -834,6 +834,16 @@ function getUserHoldings(username) {
       }
     }
   });
+  // Final pass: re-open any position that has shares > 0
+  // Handles: sell all → closed → buy again → must show as open position
+  Object.keys(result).forEach(ticker => {
+    const h = result[ticker];
+    if (h.shares > 0) {
+      h.closed  = false; // New buy after full sell — position is open again
+    }
+    if (h.shares < 0) h.shares = 0; // Guard against data entry errors
+  });
+
   return result;
 }
 
