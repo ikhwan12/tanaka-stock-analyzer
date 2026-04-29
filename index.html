@@ -322,6 +322,12 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:15
       </div>
       <button class="login-btn" id="login-btn" onclick="doLogin()">Sign In</button>
       <div class="login-error" id="login-error"></div>
+      <p style="font-size:13px;color:var(--text3);margin-top:20px;line-height:1.6;text-align:center;">
+        By signing in you agree to our
+        <a href="/terms" target="_blank" style="color:var(--green);text-decoration:none;font-weight:600;">Terms &amp; Conditions</a>.
+        This tool is for informational purposes only.
+        <strong style="color:var(--text2);">Trade at your own risk. No profit is guaranteed.</strong>
+      </p>
     </div>
   </div>
 </div>
@@ -342,6 +348,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:15
         <option value="MEDIUM" selected>🟡 Medium Risk</option>
         <option value="HIGH">🔴 High Risk</option>
       </select>
+      <a href="/terms" target="_blank" style="font-size:12px;color:var(--text3);text-decoration:none;white-space:nowrap;" title="Terms & Conditions">T&amp;C</a>
       <button class="logout-btn" onclick="doLogout()">Sign Out</button>
     </div>
   </div>
@@ -452,6 +459,10 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:15
         <div class="card">
           <p style="font-size:15px;color:var(--text2);margin-bottom:18px;line-height:1.7;">
             Fetches live prices and shows your current holdings, P&amp;L, and total performance.
+          </p>
+          <p style="font-size:13px;color:var(--text3);margin-bottom:18px;">
+            ⚠️ For informational purposes only. Not financial advice.
+            <a href="/terms" target="_blank" style="color:var(--green);text-decoration:none;">Read T&amp;C</a>
           </p>
           <button class="btn btn-blue" id="btn-chk" onclick="runCheck()">▶ Load Portfolio</button>
           <div class="result-box" id="res-chk"></div>

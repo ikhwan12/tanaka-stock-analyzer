@@ -375,7 +375,13 @@ function handleLogin(parts, chatId) {
 Welcome, ${result.username.toUpperCase()}! 👋
 
 You now have full access.
-Tap /help to see all commands.`
+Tap /help to see all commands.
+
+─────────────────────
+📋 By using this service you agree to our Terms & Conditions:
+https://tanaka-stock-analyzer.vercel.app/terms
+─────────────────────
+⚠️ Not financial advice. Trade at your own risk. No profit is guaranteed. Not affiliated with GoTrade.`
     });
   }
 
@@ -482,7 +488,12 @@ WATCHLIST LIST
 WATCHLIST SCAN
 ─────────────────────
 Tap any menu command for
-step-by-step instructions.` });
+step-by-step instructions.
+
+─────────────────────
+📋 Terms & Conditions:
+https://tanaka-stock-analyzer.vercel.app/terms
+⚠️ Not financial advice. No profit guaranteed.` });
 }
 
 // ══════════════════════════════════════════════
@@ -1229,7 +1240,13 @@ a recurring fee. Just once.
 running, but can't guarantee forever —
 contributions are non-refundable.
 
-Tap 👉 @ikhwantan to get started 😊` });
+Tap 👉 @ikhwantan to get started 😊
+
+─────────────────────
+📋 Terms & Conditions:
+https://tanaka-stock-analyzer.vercel.app/terms
+
+⚠️ Not financial advice. No profit guaranteed.` });
 }
 
 // ══════════════════════════════════════════════

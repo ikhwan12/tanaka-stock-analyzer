@@ -1,0 +1,236 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Terms & Conditions — Tanaka Stock Terminal</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+<style>
+:root{
+  --bg:#13151a;--surface:#1c1f27;--border:#2e3340;
+  --text:#edf0f7;--text2:#9aa3b8;--text3:#5e6880;
+  --green:#2dd4a0;--red:#f2657a;--yellow:#f5c842;
+  --sans:'IBM Plex Sans',sans-serif;--mono:'IBM Plex Mono',monospace;
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:16px;line-height:1.75;-webkit-font-smoothing:antialiased;}
+
+.topbar{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:0 32px;height:60px;
+  background:var(--surface);border-bottom:1px solid var(--border);
+  position:sticky;top:0;z-index:10;
+}
+.brand{display:flex;align-items:center;gap:10px;text-decoration:none;}
+.brand-icon{width:32px;height:32px;background:var(--green);border-radius:8px;display:flex;align-items:center;justify-content:center;font-size:16px;}
+.brand-name{font-size:16px;font-weight:700;color:var(--text);}
+.back-btn{
+  font-size:14px;color:var(--text2);text-decoration:none;
+  padding:7px 16px;border:1.5px solid var(--border);border-radius:6px;
+  transition:all .15s;
+}
+.back-btn:hover{border-color:var(--green);color:var(--green);}
+
+.container{max-width:760px;margin:0 auto;padding:56px 32px 80px;}
+
+.page-title{font-size:36px;font-weight:700;color:var(--text);margin-bottom:6px;}
+.page-sub{font-size:15px;color:var(--text3);margin-bottom:8px;}
+.last-updated{
+  display:inline-block;font-size:13px;font-family:var(--mono);
+  color:var(--green);background:rgba(45,212,160,.1);
+  border:1px solid rgba(45,212,160,.25);border-radius:4px;
+  padding:4px 10px;margin-bottom:48px;
+}
+
+.warning-box{
+  background:rgba(242,101,122,.08);border:1.5px solid rgba(242,101,122,.3);
+  border-radius:10px;padding:20px 24px;margin-bottom:40px;
+}
+.warning-box .warning-title{
+  font-size:15px;font-weight:700;color:var(--red);
+  display:flex;align-items:center;gap:8px;margin-bottom:8px;
+}
+.warning-box p{font-size:15px;color:var(--text2);line-height:1.7;}
+
+section{margin-bottom:44px;}
+h2{
+  font-size:20px;font-weight:700;color:var(--text);
+  margin-bottom:16px;padding-bottom:12px;
+  border-bottom:1px solid var(--border);
+  display:flex;align-items:center;gap:10px;
+}
+h2 .num{
+  width:28px;height:28px;background:var(--surface);border:1.5px solid var(--border);
+  border-radius:6px;display:flex;align-items:center;justify-content:center;
+  font-size:13px;font-weight:700;color:var(--green);flex-shrink:0;
+}
+p{font-size:15px;color:var(--text2);margin-bottom:14px;line-height:1.75;}
+p:last-child{margin-bottom:0;}
+ul{padding-left:0;list-style:none;display:flex;flex-direction:column;gap:10px;}
+ul li{
+  font-size:15px;color:var(--text2);padding-left:20px;
+  position:relative;line-height:1.7;
+}
+ul li::before{content:'—';position:absolute;left:0;color:var(--text3);}
+strong{color:var(--text);font-weight:600;}
+
+.highlight-box{
+  background:var(--surface);border:1px solid var(--border);
+  border-radius:10px;padding:20px 24px;margin:20px 0;
+}
+.highlight-box p{margin:0;}
+
+.contact-box{
+  background:rgba(45,212,160,.06);border:1.5px solid rgba(45,212,160,.2);
+  border-radius:10px;padding:20px 24px;
+}
+.contact-box p{margin-bottom:8px;}
+.contact-box p:last-child{margin:0;}
+.contact-link{color:var(--green);text-decoration:none;font-weight:600;}
+.contact-link:hover{text-decoration:underline;}
+
+.agree-footer{
+  background:var(--surface);border-top:1px solid var(--border);
+  text-align:center;padding:28px 32px;
+  position:fixed;bottom:0;left:0;right:0;
+}
+.agree-footer p{font-size:14px;color:var(--text3);margin-bottom:14px;}
+.agree-btn{
+  display:inline-block;background:var(--green);color:#0d1a14;
+  font-size:15px;font-weight:700;font-family:var(--sans);
+  padding:13px 40px;border-radius:8px;text-decoration:none;
+  transition:opacity .15s;cursor:pointer;border:none;
+}
+.agree-btn:hover{opacity:.9;}
+
+@media(max-width:600px){
+  .container{padding:40px 20px 120px;}
+  .topbar{padding:0 20px;}
+  .page-title{font-size:28px;}
+}
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <a href="/" class="brand">
+    <div class="brand-icon">📊</div>
+    <div class="brand-name">Tanaka Stock Terminal</div>
+  </a>
+  <a href="/" class="back-btn">← Back to App</a>
+</div>
+
+<div class="container">
+
+  <div class="page-title">Terms &amp; Conditions</div>
+  <div class="page-sub">Please read carefully before using this service.</div>
+  <div class="last-updated">Last updated: April 2026</div>
+
+  <!-- Critical Warning -->
+  <div class="warning-box">
+    <div class="warning-title">⚠️ Important — Read Before Proceeding</div>
+    <p>This tool does <strong>not</strong> provide financial advice. All analysis is statistical only.
+    <strong>You may lose money trading.</strong> By using this service, you accept full responsibility
+    for all trading decisions and their outcomes.</p>
+  </div>
+
+  <!-- 1 -->
+  <section>
+    <h2><span class="num">1</span> No Profit Guarantee</h2>
+    <p>Tanaka Stock Terminal provides statistical analysis tools for educational and informational purposes only. We make <strong>absolutely no guarantee of profit or positive returns</strong> from any analysis, signal, or recommendation provided by this service.</p>
+    <p>All buy/sell signals are based on historical price data and statistical models. Past patterns do <strong>not</strong> guarantee future results. Stock markets are inherently unpredictable and all investments carry risk, including the risk of losing your entire investment.</p>
+    <div class="highlight-box">
+      <p>📌 The signals shown (🟢 GOOD TO BUY, 🔴 NOT YET, etc.) are <strong>statistical observations only</strong> — not financial advice. They reflect historical price behaviour and should never be the sole basis for any trading decision.</p>
+    </div>
+  </section>
+
+  <!-- 2 -->
+  <section>
+    <h2><span class="num">2</span> Trade at Your Own Risk</h2>
+    <p>All trading decisions are made <strong>entirely at your own risk</strong>. You are solely responsible for:</p>
+    <ul>
+      <li>Any trades you place based on information from this service</li>
+      <li>Any financial losses incurred as a result of those trades</li>
+      <li>Verifying the accuracy of any data before acting on it</li>
+      <li>Understanding the products and markets you trade in</li>
+      <li>Complying with all applicable laws and regulations in your jurisdiction</li>
+    </ul>
+    <p style="margin-top:14px;">We strongly recommend consulting a licensed financial advisor before making any investment decisions.</p>
+  </section>
+
+  <!-- 3 -->
+  <section>
+    <h2><span class="num">3</span> No Affiliation</h2>
+    <p>Tanaka Stock Terminal is an <strong>independent personal project</strong>. We are not affiliated with, endorsed by, or connected to any of the following:</p>
+    <ul>
+      <li>GoTrade or any trading platform</li>
+      <li>Yahoo Finance or any data provider</li>
+      <li>Any brokerage, bank, or financial institution</li>
+      <li>Any investment firm, fund, or financial service</li>
+      <li>Telegram or any messaging platform</li>
+    </ul>
+    <div class="highlight-box">
+      <p>📌 While this tool may be used alongside GoTrade or other platforms for reference purposes, it is <strong>not affiliated with GoTrade</strong> in any way. GoTrade is an independent trading application with its own terms of service.</p>
+    </div>
+  </section>
+
+  <!-- 4 -->
+  <section>
+    <h2><span class="num">4</span> Data Accuracy</h2>
+    <p>Price data is sourced from publicly available APIs. We do not guarantee the accuracy, completeness, timeliness, or reliability of any data displayed. There may be delays, errors, or discrepancies between data shown here and actual market prices.</p>
+    <p>Always verify current prices with your broker or trading platform before executing any trade.</p>
+  </section>
+
+  <!-- 5 -->
+  <section>
+    <h2><span class="num">5</span> Service Availability</h2>
+    <p>This is a personal project maintained on a best-effort basis. We <strong>do not guarantee</strong> continuous availability of this service. The service may be interrupted, modified, or discontinued at any time without notice.</p>
+    <p>Contributions made for access are non-refundable and do not guarantee perpetual service availability. We will always endeavour to keep the service running but cannot make binding commitments about the future.</p>
+  </section>
+
+  <!-- 6 -->
+  <section>
+    <h2><span class="num">6</span> Limitation of Liability</h2>
+    <p>To the maximum extent permitted by applicable law, Tanaka Stock Terminal and its creator(s) shall not be liable for any direct, indirect, incidental, special, or consequential damages including but not limited to:</p>
+    <ul>
+      <li>Financial losses from trading decisions</li>
+      <li>Loss of data or portfolio information</li>
+      <li>Service interruptions or downtime</li>
+      <li>Errors or inaccuracies in market data</li>
+    </ul>
+  </section>
+
+  <!-- 7 -->
+  <section>
+    <h2><span class="num">7</span> Your Agreement</h2>
+    <p>By accessing or using Tanaka Stock Terminal — whether through the web app, Telegram bot, or any other interface — you confirm that you:</p>
+    <ul>
+      <li>Have read and understood these Terms &amp; Conditions</li>
+      <li>Agree to trade at your own risk with no expectation of guaranteed profit</li>
+      <li>Understand this service is not financial advice</li>
+      <li>Acknowledge this service has no affiliation with GoTrade or any financial institution</li>
+      <li>Are solely responsible for your own investment decisions</li>
+    </ul>
+  </section>
+
+  <!-- 8 -->
+  <section>
+    <h2><span class="num">8</span> Contact</h2>
+    <div class="contact-box">
+      <p>Questions, feedback, or registration inquiries:</p>
+      <p>📬 Telegram: <a href="https://t.me/ikhwantan" class="contact-link">@ikhwantan</a></p>
+      <p style="font-size:14px;color:var(--text3);margin-top:8px;">For access registration: IDR 49,000 one-time contribution. Non-refundable.</p>
+    </div>
+  </section>
+
+</div>
+
+<!-- Sticky agree footer -->
+<div class="agree-footer">
+  <p>By using Tanaka Stock Terminal you agree to these Terms &amp; Conditions.</p>
+  <a href="/" class="agree-btn">I Understand — Go to App</a>
+</div>
+
+</body>
+</html>
