@@ -810,21 +810,22 @@ function getUserHoldings(username) {
     const amount = +r[aIdx];
     const shares = +r[sIdx];
 
-    if (!result[ticker]) result[ticker] = { shares: 0, invested: 0, realizedPnl: 0, closed: false };
+    if (!result[ticker]) result[ticker] = { shares: 0, invested: 0, realizedPnl: 0, closed: false, hasSell: false };
 
     if (type === 'BUY') {
       result[ticker].shares   += shares;
       result[ticker].invested += amount;
     } else {
       // Proportional cost basis reduction
-      const avgCost = result[ticker].shares > 0 ? result[ticker].invested / result[ticker].shares : 0;
+      result[ticker].hasSell = true;
+      const avgCost          = result[ticker].shares > 0 ? result[ticker].invested / result[ticker].shares : 0;
       const costOfSharesSold = avgCost * shares;
-      const sellRevenue      = amount; // what we actually got
-      result[ticker].realizedPnl += sellRevenue - costOfSharesSold;
+      result[ticker].realizedPnl += amount - costOfSharesSold; // sell revenue - cost basis
       result[ticker].invested    -= costOfSharesSold;
       result[ticker].shares      -= shares;
-      // Mark as closed if shares near zero
-      if (result[ticker].shares <= 0.1) {
+      // Only mark as closed if there was a SELL and remaining shares ≤ 0.1
+      // This prevents small legitimate BUY-only positions from being marked closed
+      if (result[ticker].hasSell && result[ticker].shares <= 0.1) {
         result[ticker].shares   = 0;
         result[ticker].invested = 0;
         result[ticker].closed   = true;
@@ -836,7 +837,10 @@ function getUserHoldings(username) {
 
 function portfolio(username) {
   const holdings = getUserHoldings(username);
-  const tickers  = Object.keys(holdings).filter(t => holdings[t].shares > 0.1 || holdings[t].closed);
+  // Show: open positions (any share count) + closed positions (had a sell)
+  const tickers  = Object.keys(holdings).filter(t => t && (
+    holdings[t].shares > 0 || holdings[t].closed
+  ));
   if (tickers.length === 0) return json({ message: '💼 Portfolio is empty.\n\nRecord trades with:\nUPDATE AMZN B100 185.20', positions: [] });
 
   let lines = ['💼 PORTFOLIO — ' + (username || 'all'), '─────────────────────'];
@@ -847,7 +851,7 @@ function portfolio(username) {
     const h = holdings[ticker];
 
     // Closed position — show realized P&L, no live price needed
-    if (h.closed || h.shares <= 0.1) {
+    if (h.closed) {
       const rpnl = h.realizedPnl || 0;
       totalRealizedPnl += rpnl;  // ← add to grand total
       positions.push({ ticker, shares: 0, closed: true, realizedPnl: +rpnl.toFixed(2) });
