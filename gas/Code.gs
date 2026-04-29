@@ -111,6 +111,10 @@ function handleMessage(raw, chatId, tgUsername, tgId) {
   const cmd     = parts[0].toUpperCase().replace(/^\//, '').split('@')[0];
   const hasArgs = parts.length > 1;
 
+  // ── Define session early so it's available everywhere ──
+  const session     = getSession(chatId);
+  const sessionUser = session ? session.username : '';
+
   // ── Always-public commands ──
   if (cmd === 'START')    return sendWelcome(chatId, tgUsername);
   if (cmd === 'HELP')     return sendHelp(chatId);
@@ -125,7 +129,7 @@ function handleMessage(raw, chatId, tgUsername, tgId) {
     if (cmd === 'REGISTER')  return sendRegisterInfo();
     if (cmd === 'EXPLAIN')   return sendExplain('');
     if (cmd === 'PROFILE')   return promptProfile();
-    if (cmd === 'BALANCE')   return getBalance(sessionUser || '');
+    if (cmd === 'BALANCE')   return getBalance(sessionUser);
     if (cmd === 'CLEAR')     return promptClear();
     if (cmd === 'BUY')       return promptBuy();
     if (cmd === 'SELL')      return promptSell();
@@ -140,7 +144,6 @@ function handleMessage(raw, chatId, tgUsername, tgId) {
   if (cmd === 'LOGOUT') return handleLogout(chatId);
 
   // ── Auth wall + free usage tracking ──
-  const session    = getSession(chatId);
   const isTelegram = !!chatId; // chatId always present for Telegram, empty for web
 
   if (!session) {
@@ -177,7 +180,6 @@ One-time contribution: IDR 49,000` });
 
   // Username priority: 1) Telegram session, 2) embedded in message (web app)
   // Web app always appends username to commands: BUY AMZN 100 username
-  const sessionUser = session ? session.username : '';
 
   if (cmd === 'BUY') {
     if (parts.length < 3) return promptBuy();
