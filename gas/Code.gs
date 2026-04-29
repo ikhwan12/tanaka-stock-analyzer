@@ -120,6 +120,14 @@ function handleMessage(raw, chatId, tgUsername, tgId) {
   if (cmd === 'HELP')     return sendHelp(chatId);
   if (cmd === 'REGISTER') return sendRegisterInfo();
   if (cmd === 'EXPLAIN')  return sendExplain(parts[1] || '');
+  if (cmd === 'GETPROFILE') {
+    // Web app calls: GETPROFILE username — returns current profile from sheet
+    const uGP = parts[1] || '';
+    if (!uGP) return json({ profile: 'MEDIUM' });
+    const p = getProfile(uGP);
+    const key = Object.keys(PROFILES).find(k => PROFILES[k] === p) || 'MEDIUM';
+    return json({ profile: key, label: p.label });
+  }
   if (cmd === 'PROFILE')  { /* handled below with auth */ }
 
   // ── Menu taps with NO args → show instruction prompt ──
@@ -393,6 +401,7 @@ function handleLogin(parts, chatId) {
       success:   true,
       username:  result.username,
       watchlist: result.watchlist || '',
+      profile:   result.profile   || 'MEDIUM',
       message:
 `✅ LOGIN SUCCESSFUL
 

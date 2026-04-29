@@ -562,6 +562,14 @@ window.addEventListener('load', async () => {
     if (saved.profile) document.getElementById('profile-select').value = saved.profile;
     renderWatchlistChips();
     loadPositions();
+    // Fetch fresh profile from server (syncs profile changed via Telegram)
+    try {
+      const pr = await callAPI('GETPROFILE ' + currentUser);
+      if (pr && pr.profile && ['LOW','MEDIUM','HIGH'].includes(pr.profile)) {
+        document.getElementById('profile-select').value = pr.profile;
+        saveSession(currentUser, watchlist, pr.profile);
+      }
+    } catch(_) {}
     // Silently verify the session is still valid (user exists in Google Sheet)
     try {
       const r    = await fetch(API + '?message=' + encodeURIComponent('CHECK ' + currentUser));
@@ -611,7 +619,12 @@ async function doLogin(){
       // ✅ Success — redirect to dashboard
       currentUser=data.username;
       watchlist=data.watchlist?data.watchlist.split(',').map(t=>t.trim()).filter(Boolean):[];
-      const profile = data.profile || 'MEDIUM';
+      // Always fetch fresh profile from server — don't rely on login response alone
+      let profile = data.profile || 'MEDIUM';
+      try {
+        const pr = await callAPI('GETPROFILE '+currentUser);
+        if (pr && pr.profile && ['LOW','MEDIUM','HIGH'].includes(pr.profile)) profile = pr.profile;
+      } catch(_) {}
       saveSession(currentUser, watchlist, profile);
       document.getElementById('profile-select').value = profile;
       err.style.display='none';
