@@ -407,7 +407,8 @@ function handleLogin(parts, chatId) {
   if (parts.length < 3) return promptLogin();
 
   const username = (parts[1] || '').toString().trim();
-  const password = (parts[2] || '').toString().trim();
+  // Password may contain spaces — use everything after username
+  const password = parts.slice(2).join(' ').trim();
   const result   = checkCredentials(username, password);
 
   if (result.success) {
