@@ -207,7 +207,11 @@ function doGet(e) {
     if (e.parameter.debug === '1') {
       return json({ status: 'OK', version: 'v3', spreadsheetId: getSpreadsheetId_(), timestamp: new Date().toISOString() });
     }
-    if (msg) return handleMessage(msg, chatId);
+    if (msg) {
+      const tgU = (e.parameter.tgUsername || '').toString().trim();
+      const tgI = (e.parameter.tgId || '').toString().trim();
+      return handleMessage(msg, chatId, tgU, tgI);
+    }
 
     // Legacy web frontend calls
     const type = e.parameter.type;
@@ -249,7 +253,7 @@ function handleMessage(raw, chatId, tgUsername, tgId) {
   if (cmd === 'SCAN-INIT' || cmd === 'SCANINIT') return scanInitFromRouter_(parts, chatId);
   if (cmd === 'SCAN-PROGRESS' || cmd === 'SCANPROGRESS' || cmd === 'SCAN_PROGRESS') return getMarketScanProgress();
   if (cmd === 'CHECK-TOP-MOVER' || cmd === 'CHECKTOPMOVER' || cmd === 'CHECK_TOP_MOVER' ||
-      cmd === 'CHECK-GOOD-STOCK' || cmd === 'CHECKGOODSTOCK') return checkTopMover();
+      cmd === 'CHECK-GOOD-STOCK' || cmd === 'CHECKGOODSTOCK' || cmd === 'CHECK_GOOD_STOCK') return checkTopMover();
   if (cmd === 'GETPROFILE') {
     // Web app calls: GETPROFILE username — returns current profile from sheet
     const uGP = parts[1] || '';
@@ -275,7 +279,7 @@ function handleMessage(raw, chatId, tgUsername, tgId) {
     if (cmd === 'CHECK')     return runCheck(chatId, tgUsername, tgId, sessionUser);
     if (cmd === 'SCAN-PROGRESS' || cmd === 'SCANPROGRESS' || cmd === 'SCAN_PROGRESS') return getMarketScanProgress();
     if (cmd === 'CHECK-TOP-MOVER' || cmd === 'CHECKTOPMOVER' || cmd === 'CHECK_TOP_MOVER' ||
-        cmd === 'CHECK-GOOD-STOCK' || cmd === 'CHECKGOODSTOCK') return checkTopMover();
+        cmd === 'CHECK-GOOD-STOCK' || cmd === 'CHECKGOODSTOCK' || cmd === 'CHECK_GOOD_STOCK') return checkTopMover();
     if (cmd === 'WATCHLIST') return promptWatchlist();
     return sendHelp(chatId);
   }
@@ -427,7 +431,7 @@ One-time contribution: IDR 49,000` });
     }
     return scanInit(webScanner, '');
   }
-  if ((cmd === 'CHECK' && (parts[1] || '').toUpperCase() === 'GOOD') || cmd === 'CHECKGOODSTOCK' || cmd === 'CHECK-GOOD-STOCK') {
+  if ((cmd === 'CHECK' && (parts[1] || '').toUpperCase() === 'GOOD') || cmd === 'CHECKGOODSTOCK' || cmd === 'CHECK-GOOD-STOCK' || cmd === 'CHECK_GOOD_STOCK') {
     return checkTopMover();
   }
   if (cmd === 'CHECK' && (parts[1] || '').toUpperCase() === 'TOP' && (parts[2] || '').toUpperCase() === 'MOVER') {
@@ -1637,12 +1641,36 @@ function getScanMetaSheet() {
   return s;
 }
 
+/**
+ * scan_results / scan_meta date cells may be text, Date from getValues(), or a Sheets serial.
+ * Normalize to yyyy-MM-dd (Asia/Jakarta).
+ */
+function scanResultsDateCellToIso_(cell) {
+  if (cell == null || cell === '') return '';
+  if (Object.prototype.toString.call(cell) === '[object Date]' && !isNaN(cell.getTime())) {
+    return Utilities.formatDate(cell, 'Asia/Jakarta', 'yyyy-MM-dd');
+  }
+  if (typeof cell === 'number' && isFinite(cell) && cell > 20000 && cell < 80000) {
+    var ms = (cell - 25569) * 86400 * 1000;
+    var d0 = new Date(ms);
+    if (!isNaN(d0.getTime())) return Utilities.formatDate(d0, 'Asia/Jakarta', 'yyyy-MM-dd');
+  }
+  const s = String(cell).trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return s;
+  var parsed = new Date(s);
+  if (!isNaN(parsed.getTime())) return Utilities.formatDate(parsed, 'Asia/Jakarta', 'yyyy-MM-dd');
+  return '';
+}
+
 function getLastScanDate() {
   const sheet = getScanMetaSheet();
   const rows  = sheet.getDataRange().getValues();
   for (let i = 1; i < rows.length; i++) {
     if (String(rows[i][0]).trim() === 'last_scan_date') {
-      return String(rows[i][1]).trim();
+      const raw = rows[i][1];
+      const iso = scanResultsDateCellToIso_(raw);
+      if (iso) return iso;
+      return String(raw || '').trim();
     }
   }
   return '';
@@ -1876,8 +1904,8 @@ function getLatestScanDateFromResultsSheet_() {
   const rows = sheet.getDataRange().getValues().slice(1);
   var maxD = '';
   for (var i = 0; i < rows.length; i++) {
-    const d = String(rows[i][0] || '').trim();
-    if (/^\d{4}-\d{2}-\d{2}$/.test(d) && d > maxD) maxD = d;
+    const d = scanResultsDateCellToIso_(rows[i][0]);
+    if (d && d > maxD) maxD = d;
   }
   return maxD;
 }
@@ -1890,12 +1918,12 @@ function getScanResultsForDate_(scanDateStr) {
   const out = [];
   for (var i = 0; i < rows.length; i++) {
     const r = rows[i];
-    const dateStr = String(r[0] || '').trim();
-    if (dateStr !== scanDateStr) continue;
+    const dateStr = scanResultsDateCellToIso_(r[0]);
+    if (!dateStr || dateStr !== scanDateStr) continue;
     const ticker = String(r[1] || '').trim();
     if (!ticker) continue;
     out.push({
-      date:         dateStr,
+      date:         scanDateStr,
       ticker:       ticker,
       changePct:    +r[2],
       currentPrice: +r[3],

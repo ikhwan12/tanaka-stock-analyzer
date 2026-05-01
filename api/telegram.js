@@ -59,33 +59,67 @@ export default async function handler(req, res) {
         redirect: 'follow'
       });
 
-      if (gasResp.ok) {
-        const data = await gasResp.json();
-        if (data && data.message) replyText = data.message;
-      } else {
+      const rawBody = await gasResp.text();
+      let data = null;
+      try {
+        data = rawBody ? JSON.parse(rawBody) : null;
+      } catch (parseErr) {
+        console.error('GAS non-JSON body:', rawBody.slice(0, 500));
+      }
+
+      if (gasResp.ok && data && typeof data.message === 'string' && data.message.length) {
+        replyText = data.message;
+      } else if (gasResp.ok && data && data.message == null) {
+        replyText = '⚠️ Empty reply from server. Try again or use the web app.';
+        console.error('GAS JSON missing message:', JSON.stringify(data).slice(0, 400));
+      } else if (!gasResp.ok) {
         replyText = `⚠️ Server error (${gasResp.status}). Please try again.`;
-        console.error('GAS HTTP error:', gasResp.status);
+        console.error('GAS HTTP error:', gasResp.status, rawBody.slice(0, 300));
       }
     } catch (gasErr) {
       replyText = `⚠️ Request failed. Please try again in a moment.`;
       console.error('GAS fetch error:', gasErr.message);
     }
 
-    // Send reply to Telegram
-    await fetch(`${TG_API}/sendMessage`, {
+    // Telegram hard limit 4096; long TOP MOVER lists otherwise fail sendMessage → no user-visible reply
+    const TG_MAX = 4080;
+    if (replyText.length > TG_MAX) {
+      replyText =
+        replyText.slice(0, TG_MAX - 80) +
+        '\n\n… (truncated — open Tanaka Stock web app → Top Mover for full list)';
+    }
+
+    const sendPayload = {
+      chat_id:             chatId,
+      text:                replyText,
+      reply_to_message_id: msgId
+    };
+
+    let tgSend = await fetch(`${TG_API}/sendMessage`, {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({
-        chat_id:             chatId,
-        text:                replyText,
-        reply_to_message_id: msgId
-      })
+      body:    JSON.stringify(sendPayload)
     });
+
+    if (!tgSend.ok) {
+      const errBody = await tgSend.text();
+      console.error('sendMessage failed:', tgSend.status, errBody);
+      delete sendPayload.reply_to_message_id;
+      sendPayload.text = '⚠️ Reply was too long or could not be delivered. Try the web app (Top Mover tab).';
+      tgSend = await fetch(`${TG_API}/sendMessage`, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify(sendPayload)
+      });
+      if (!tgSend.ok) {
+        console.error('sendMessage retry failed:', await tgSend.text());
+      }
+    }
 
     return res.status(200).json({ ok: true });
 
   } catch (err) {
-    console.error('Webhook error:', err.message);
+    console.error('Webhook error:', err.message, err.stack);
     return res.status(200).json({ ok: true });
   }
 }
