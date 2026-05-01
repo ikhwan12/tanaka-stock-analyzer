@@ -95,6 +95,8 @@ function doGet(e) {
     if (type === 'ANALYZE') return analyze(e.parameter.ticker, parseFloat(e.parameter.amount) || 100, e.parameter.analyzeType, e.parameter.username);
     if (type === 'UPDATE')  return recordTrade(e.parameter.ticker, e.parameter.tradeType, parseFloat(e.parameter.amount), parseFloat(e.parameter.price), e.parameter.username);
     if (type === 'CHECK')   return portfolio(e.parameter.username);
+    if (type === 'SCAN_INIT')         return scanInit(e.parameter.username || '');
+    if (type === 'CHECK_GOOD_STOCK')  return checkGoodStock();
     return json({ message: '⚠️ No command provided.' });
 
   } catch (err) {
@@ -313,8 +315,8 @@ function runCheck(chatId, tgUsername, tgId, webUsername) {
       }
     }
   }
-  // hideClose: Telegram shows only open positions, web app shows all
-  const hideClose = !!chatId; // true for Telegram
+  // hideClose: always hide closed/sold positions in /check (both Telegram and web)
+  const hideClose = true;
   return portfolio(session ? session.username : webUsername || '', hideClose);
 }
 

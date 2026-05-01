@@ -130,6 +130,23 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:15
 .tab.t-check.active{color:var(--blue);border-bottom-color:var(--blue);}
 .tab.t-watchlist.active{color:var(--orange);border-bottom-color:var(--orange);}
 .tab.t-balance.active{color:var(--green);border-bottom-color:var(--green);}
+.tab.t-goodstock.active{color:#a855f7;border-bottom-color:#a855f7;}
+.gs-table{width:100%;border-collapse:collapse;margin-top:16px;}
+.gs-table th{padding:10px 12px;font-size:12px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid var(--border);text-align:left;font-weight:600;}
+.gs-table td{padding:12px 12px;font-size:14px;border-bottom:1px solid rgba(46,51,64,.5);vertical-align:middle;}
+.gs-signal{display:inline-block;padding:3px 10px;border-radius:20px;font-size:12px;font-weight:600;}
+.gs-signal.green{background:rgba(34,197,94,.15);color:#22c55e;}
+.gs-signal.yellow{background:rgba(234,179,8,.15);color:#eab308;}
+.gs-signal.red{background:rgba(239,68,68,.15);color:#ef4444;}
+.gs-analyze-btn{padding:5px 14px;font-size:12px;border-radius:6px;border:1px solid #a855f7;color:#a855f7;background:transparent;cursor:pointer;transition:all .2s;}
+.gs-analyze-btn:hover{background:#a855f7;color:#fff;}
+.gs-analyze-result{background:var(--bg);border-radius:10px;padding:16px;margin-top:16px;font-size:13px;white-space:pre-wrap;font-family:'IBM Plex Mono',monospace;border:1px solid var(--border);}
+.gs-pagination{display:flex;gap:8px;align-items:center;justify-content:center;margin-top:18px;}
+.gs-page-btn{padding:6px 14px;border-radius:6px;border:1px solid var(--border);background:var(--surface);color:var(--text1);cursor:pointer;font-size:13px;}
+.gs-page-btn:disabled{opacity:.35;cursor:default;}
+.gs-page-info{font-size:13px;color:var(--text3);}
+.gs-scan-bar{display:flex;align-items:center;gap:14px;margin-bottom:18px;flex-wrap:wrap;}
+.gs-scan-status{font-size:13px;color:var(--text3);}
 
 /* ── LAYOUT ─────────────────────────────── */
 .body-wrap{
@@ -360,6 +377,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:15
     <div class="tab t-update"          onclick="switchTab('update')">📝 UPDATE</div>
     <div class="tab t-check"           onclick="switchTab('check')">💼 CHECK</div>
     <div class="tab t-watchlist"       onclick="switchTab('watchlist')">📡 WATCHLIST</div>
+    <div class="tab t-goodstock"       onclick="switchTab('goodstock')">🔍 GOOD STOCK</div>
     <div class="tab t-balance"         onclick="switchTab('balance')">💰 BALANCE</div>
   </div>
 
@@ -490,6 +508,33 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:15
               <thead><tr><th>Ticker</th><th>Price</th><th>Signal</th></tr></thead>
               <tbody id="wl-scan-body"></tbody>
             </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- GOOD STOCK -->
+      <div class="tab-content" id="tc-goodstock">
+        <div class="section-header">
+          <span class="section-badge" style="background:rgba(168,85,247,.15);color:#a855f7;">Market</span>
+          <h2 class="section-title">Good Stock Scanner</h2>
+        </div>
+        <div class="card">
+          <p style="font-size:14px;color:var(--text2);margin-bottom:16px;line-height:1.7;">
+            Stocks with avg volume ≥ 4M that dropped ≥ 10% today — sorted most negative first.
+            Scan runs once per day and is shared across all users.
+          </p>
+          <div class="gs-scan-bar">
+            <button class="btn" id="btn-scan-init" onclick="runScanInit()"
+                    style="background:#a855f7;border-color:#a855f7;">🔍 Run Market Scan</button>
+            <span class="gs-scan-status" id="gs-scan-status">Checking scan status…</span>
+          </div>
+          <div id="gs-content">
+            <div class="pos-empty" style="padding:32px 0;text-align:center;">
+              Loading…
+            </div>
+          </div>
+          <div id="gs-analyze-area" style="display:none;">
+            <div class="gs-analyze-result" id="gs-analyze-result"></div>
           </div>
         </div>
       </div>
@@ -665,6 +710,7 @@ function switchTab(tab){
   if(tab==='sell')loadPositions();
   if(tab==='watchlist')loadWatchlistFromServer();
   if(tab==='balance')loadBalance();
+  if(tab==='goodstock')loadGoodStock();
 }
 
 function setLoading(boxId,btnId){
@@ -718,7 +764,8 @@ async function loadPositions(){
     positions={};
     if(data.positions&&data.positions.length>0){
       list.innerHTML='';
-      data.positions.forEach(p=>{
+      const open = data.positions.filter(p => !p.closed && p.shares > 0);
+      open.forEach(p=>{
         positions[p.ticker]=p;
         const div=document.createElement('div');
         div.className='pos-card';
@@ -726,7 +773,8 @@ async function loadPositions(){
         div.innerHTML='<div><div class="pos-ticker">'+p.ticker+'</div><div style="font-size:10px;color:var(--muted)">'+p.shares+' shares @ $'+p.avgCost+'</div></div><div class="pos-pnl '+(p.pnl>=0?'up':'dn')+'">'+(p.pnl>=0?'+':'')+'$'+p.pnl+' ('+p.pnlPct+'%)</div>';
         list.appendChild(div);
       });
-    }else{list.innerHTML='<div class="pos-empty">No positions recorded yet.</div>';}
+      if(open.length===0)list.innerHTML='<div class="pos-empty">No open positions.</div>';
+    }
   }catch(e){list.innerHTML='<div class="pos-empty">⚠️ Could not load positions.</div>';}
 }
 
@@ -853,6 +901,199 @@ function addHistory(type,label,result){
   item.innerHTML='<div class="h-cmd">'+(icons[type]||type)+'</div><div class="h-time">// '+time+' — '+label+'</div><div class="h-result">'+(result||'')+'</div>';
   list.insertBefore(item,list.firstChild);
 }
+
+// ═══════════════════════════════════════════
+//  GOOD STOCK — scan-init + check-good-stock
+// ═══════════════════════════════════════════
+let gsAllResults = [];
+let gsCurrentPage = 1;
+const GS_PAGE_SIZE = 20;
+
+async function loadGoodStock() {
+  const statusEl = document.getElementById('gs-scan-status');
+  const contentEl = document.getElementById('gs-content');
+  const btnScan = document.getElementById('btn-scan-init');
+  const analyzeArea = document.getElementById('gs-analyze-area');
+  if(analyzeArea) analyzeArea.style.display = 'none';
+
+  statusEl.textContent = 'Checking scan status…';
+  contentEl.innerHTML = '<div class="pos-empty" style="padding:32px 0;text-align:center;">Loading…</div>';
+  btnScan.disabled = true;
+
+  try {
+    const d = await callAPI('CHECK-GOOD-STOCK');
+    const today = new Date().toLocaleDateString('en-CA'); // yyyy-mm-dd local
+
+    if (d.date && d.date === d.date) { // scan ran
+      if (d.count > 0) {
+        // Scan already done today — disable button
+        statusEl.textContent = '✅ Scan done for ' + (d.date || 'today') + ' — ' + d.count + ' stock(s) found';
+        btnScan.disabled = true;
+        btnScan.textContent = '✅ Already Scanned Today';
+        gsAllResults = d.results || [];
+        gsCurrentPage = 1;
+        renderGoodStockTable();
+      } else if (d.results && d.results.length === 0 && d.date) {
+        // Scanned but nothing found
+        statusEl.textContent = '✅ Scan done for ' + d.date + ' — No stocks matched today';
+        btnScan.disabled = true;
+        btnScan.textContent = '✅ Already Scanned Today';
+        gsAllResults = [];
+        contentEl.innerHTML = '<div class="pos-empty" style="padding:32px 0;text-align:center;">No stocks dropped ≥10% with ≥4M avg volume today.</div>';
+      } else {
+        // Not scanned yet
+        statusEl.textContent = 'Not scanned yet today — click button to run';
+        btnScan.disabled = false;
+        btnScan.textContent = '🔍 Run Market Scan';
+        gsAllResults = [];
+        contentEl.innerHTML = '<div class="pos-empty" style="padding:32px 0;text-align:center;">No scan data. Click "Run Market Scan" to start.</div>';
+      }
+    } else {
+      // Not scanned yet
+      statusEl.textContent = 'Not scanned yet today — click button to run';
+      btnScan.disabled = false;
+      btnScan.textContent = '🔍 Run Market Scan';
+      gsAllResults = [];
+      contentEl.innerHTML = '<div class="pos-empty" style="padding:32px 0;text-align:center;">No scan data. Click "Run Market Scan" to start.</div>';
+    }
+  } catch(e) {
+    statusEl.textContent = '⚠️ Could not load scan status';
+    btnScan.disabled = false;
+    contentEl.innerHTML = '<div class="pos-empty">Error loading data.</div>';
+  }
+}
+
+async function runScanInit() {
+  const btn = document.getElementById('btn-scan-init');
+  const statusEl = document.getElementById('gs-scan-status');
+  const contentEl = document.getElementById('gs-content');
+  btn.disabled = true;
+  btn.textContent = '⏳ Scanning… (may take ~30s)';
+  statusEl.textContent = 'Fetching 90 high-volume stocks…';
+  contentEl.innerHTML = '<div class="pos-empty" style="padding:32px 0;text-align:center;">Running market scan — please wait…</div>';
+  try {
+    const d = await callAPI('SCAN-INIT');
+    if (d.scanned) {
+      // Already done today
+      statusEl.textContent = '✅ ' + (d.message.split('\n')[0] || 'Already scanned today');
+      btn.textContent = '✅ Already Scanned Today';
+    } else {
+      statusEl.textContent = '✅ Scan complete — ' + (d.count || 0) + ' stock(s) found';
+      btn.textContent = '✅ Already Scanned Today';
+      gsAllResults = d.results || [];
+      gsCurrentPage = 1;
+      if (gsAllResults.length > 0) {
+        renderGoodStockTable();
+      } else {
+        contentEl.innerHTML = '<div class="pos-empty" style="padding:32px 0;text-align:center;">No stocks matched today's criteria.</div>';
+      }
+    }
+  } catch(e) {
+    statusEl.textContent = '⚠️ Scan failed: ' + e.message;
+    btn.disabled = false;
+    btn.textContent = '🔍 Run Market Scan';
+  }
+}
+
+function renderGoodStockTable() {
+  const contentEl = document.getElementById('gs-content');
+  const total = gsAllResults.length;
+  const totalPages = Math.ceil(total / GS_PAGE_SIZE);
+  const start = (gsCurrentPage - 1) * GS_PAGE_SIZE;
+  const pageItems = gsAllResults.slice(start, start + GS_PAGE_SIZE);
+
+  let rows = pageItems.map((r, i) => {
+    const rank = start + i + 1;
+    // Pre-compute signal based on change magnitude (we'll update after analyze)
+    const pct = r.changePct;
+    let sigClass = 'red', sigLabel = 'Oversold';
+    if (pct <= -20) { sigClass = 'green'; sigLabel = 'Strong Drop'; }
+    else if (pct <= -15) { sigClass = 'yellow'; sigLabel = 'Big Drop'; }
+    return `<tr>
+      <td style="color:var(--text3);font-size:12px;">${rank}</td>
+      <td style="font-weight:600;font-family:'IBM Plex Mono',monospace;">${r.ticker}</td>
+      <td style="color:#ef4444;font-weight:600;">${r.changePct.toFixed(1)}%</td>
+      <td style="font-family:'IBM Plex Mono',monospace;">$${r.currentPrice.toFixed(2)}</td>
+      <td><span class="gs-signal ${sigClass}">${sigLabel}</span></td>
+      <td><button class="gs-analyze-btn" onclick="analyzeBuyFromScan('${r.ticker}', this)">Analyze Buy</button></td>
+    </tr>`;
+  }).join('');
+
+  const pagination = totalPages > 1 ? `
+    <div class="gs-pagination">
+      <button class="gs-page-btn" onclick="changeGsPage(${gsCurrentPage-1})" ${gsCurrentPage===1?'disabled':''}>← Prev</button>
+      <span class="gs-page-info">Page ${gsCurrentPage} of ${totalPages} &nbsp;(${total} total)</span>
+      <button class="gs-page-btn" onclick="changeGsPage(${gsCurrentPage+1})" ${gsCurrentPage===totalPages?'disabled':''}>Next →</button>
+    </div>` : `<div class="gs-pagination"><span class="gs-page-info">${total} stock(s) found</span></div>`;
+
+  contentEl.innerHTML = `
+    <table class="gs-table">
+      <thead><tr>
+        <th>#</th><th>Ticker</th><th>Change</th><th>Price</th><th>Signal</th><th>Action</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>
+    ${pagination}
+  `;
+}
+
+function changeGsPage(page) {
+  const totalPages = Math.ceil(gsAllResults.length / GS_PAGE_SIZE);
+  if (page < 1 || page > totalPages) return;
+  gsCurrentPage = page;
+  renderGoodStockTable();
+  document.getElementById('gs-analyze-area').style.display = 'none';
+}
+
+async function analyzeBuyFromScan(ticker, btn) {
+  const analyzeArea = document.getElementById('gs-analyze-area');
+  const analyzeResult = document.getElementById('gs-analyze-result');
+  // highlight row
+  document.querySelectorAll('.gs-analyze-btn').forEach(b => {
+    b.textContent = 'Analyze Buy';
+    b.style.background = 'transparent';
+    b.style.color = '#a855f7';
+  });
+  btn.textContent = '⏳ Loading…';
+  btn.style.background = '#a855f7';
+  btn.style.color = '#fff';
+  analyzeArea.style.display = 'none';
+  try {
+    const d = await callAPI('BUY ' + ticker + ' 100 ' + currentUser);
+    // Determine signal class for the row button
+    let sigText = ticker + ' — ';
+    let rowSignal = 'red';
+    if (d.signal === 'GOOD_BUY') { sigText += '🟢 Good to Buy'; rowSignal = 'green'; }
+    else if (d.signal === 'MIXED')    { sigText += '🟡 Mixed Signals'; rowSignal = 'yellow'; }
+    else                               { sigText += '🔴 Not Yet'; rowSignal = 'red'; }
+
+    // Update the signal badge in the row
+    const rows = document.querySelectorAll('.gs-table tbody tr');
+    rows.forEach(row => {
+      const tickerCell = row.querySelector('td:nth-child(2)');
+      if (tickerCell && tickerCell.textContent === ticker) {
+        const sigCell = row.querySelector('td:nth-child(5) .gs-signal');
+        if (sigCell) {
+          sigCell.className = 'gs-signal ' + rowSignal;
+          sigCell.textContent = d.signal === 'GOOD_BUY' ? 'Good Buy' : d.signal === 'MIXED' ? 'Mixed' : 'Not Yet';
+        }
+      }
+    });
+
+    btn.textContent = 'Analyzed ✓';
+    analyzeResult.textContent = d.message || 'No result';
+    analyzeArea.style.display = 'block';
+    analyzeArea.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    addHistory('buy', 'BUY ' + ticker + ' (Good Stock scan)', d.message);
+  } catch(e) {
+    btn.textContent = 'Analyze Buy';
+    btn.style.background = 'transparent';
+    btn.style.color = '#a855f7';
+    analyzeResult.textContent = '⚠️ ' + e.message;
+    analyzeArea.style.display = 'block';
+  }
+}
+
 </script>
 </body>
 </html>
