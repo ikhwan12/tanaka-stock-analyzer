@@ -1585,7 +1585,7 @@ Tap /check-good-stock to see the results.`, scanned: true, date: today });
   ];
 
   const results   = [];
-  const minAvgVol = 4_000_000; // 4M avg volume filter
+  const minAvgVol = 4000000; // 4M avg volume filter
   const dropThreshold = -10;   // -10% or worse
 
   for (const ticker of WATCH_TICKERS) {
