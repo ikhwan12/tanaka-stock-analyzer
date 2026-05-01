@@ -14,25 +14,26 @@ function telegramApiBase() {
 }
 
 /**
- * Telegram must call a URL that is NOT behind Vercel Deployment Protection (preview URLs often 401).
- * Prefer PUBLIC_BASE_URL in env. Only use VERCEL_URL on production deploys.
+ * Telegram must hit a stable, public origin. Do NOT use VERCEL_URL: it is the per-deployment
+ * hostname (…-hash-….vercel.app), which often returns 401 (Deployment Protection) while the
+ * production alias (VERCEL_PROJECT_PRODUCTION_URL / custom domain) works.
  */
 function resolveWebhookBaseUrl() {
   const explicit = (process.env.PUBLIC_BASE_URL || '').trim().replace(/\/$/, '');
   if (explicit) return { base: explicit, source: 'PUBLIC_BASE_URL' };
 
-  if (process.env.VERCEL_ENV === 'production' && process.env.VERCEL_URL) {
-    return { base: `https://${process.env.VERCEL_URL}`, source: 'VERCEL_URL (production)' };
+  const prodHost = (process.env.VERCEL_PROJECT_PRODUCTION_URL || '').trim().replace(/\/$/, '');
+  if (prodHost) {
+    const base = /^https?:\/\//i.test(prodHost) ? prodHost : `https://${prodHost}`;
+    return { base, source: 'VERCEL_PROJECT_PRODUCTION_URL' };
   }
 
-  // Preview / local: never use VERCEL_URL here — it points at a protected preview host → Telegram 401
   const fallback = 'https://tanaka-stock-analyzer.vercel.app';
   return {
     base:     fallback,
     source:   'default production host',
     warning:
-      'Webhook uses default production URL. Add PUBLIC_BASE_URL in Vercel if your live site is a custom domain. ' +
-      'If you opened /api/setup from a Preview deployment, the webhook was NOT pointed at that preview (previews often block Telegram with 401).'
+      'No PUBLIC_BASE_URL or VERCEL_PROJECT_PRODUCTION_URL — using default. Set PUBLIC_BASE_URL in Vercel to your real site (custom domain) if different.'
   };
 }
 
