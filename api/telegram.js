@@ -1,12 +1,26 @@
-const GAS_URL   = 'https://script.google.com/macros/s/AKfycbwC0vqFfZJyG59JsvZLvBHFTdPdA3RByl0zEWJMLACLNfKxFMtR7JS7uMqWix8EeXms/exec';
-const BOT_TOKEN = '8777002152:AAGlHUUQ2C5b1MoAUhRzPZMLUTvYYC5Q4lg';
-const TG_API    = `https://api.telegram.org/bot${BOT_TOKEN}`;
+const GAS_URL = 'https://script.google.com/macros/s/AKfycbwC0vqFfZJyG59JsvZLvBHFTdPdA3RByl0zEWJMLACLNfKxFMtR7JS7uMqWix8EeXms/exec';
+
+function telegramApiBase() {
+  const t = process.env.TELEGRAM_BOT_TOKEN;
+  if (!t || !String(t).trim()) {
+    throw new Error('Missing TELEGRAM_BOT_TOKEN (set in Vercel → Settings → Environment Variables)');
+  }
+  return `https://api.telegram.org/bot${String(t).trim()}`;
+}
 
 export const config = { maxDuration: 60 };
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(200).json({ ok: true, info: 'Tanaka Stock Bot webhook' });
+  }
+
+  let TG_API;
+  try {
+    TG_API = telegramApiBase();
+  } catch (e) {
+    console.error(e.message);
+    return res.status(500).json({ ok: false, error: e.message });
   }
 
   try {

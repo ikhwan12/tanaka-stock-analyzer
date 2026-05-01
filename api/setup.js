@@ -1,14 +1,27 @@
 // ══════════════════════════════════════════════
 //  One-time setup: registers Telegram webhook
 //  Visit: YOUR_VERCEL_URL/api/setup
+//  Requires env: TELEGRAM_BOT_TOKEN
+//  Optional: PUBLIC_BASE_URL (e.g. https://tanaka-stock-analyzer.vercel.app) for webhook URL
 // ══════════════════════════════════════════════
 
-const BOT_TOKEN   = '8777002152:AAGlHUUQ2C5b1MoAUhRzPZMLUTvYYC5Q4lg';
-const TG_API      = `https://api.telegram.org/bot${BOT_TOKEN}`;
-const WEBHOOK_URL = 'https://tanaka-stock-analyzer.vercel.app/api/telegram';
+function telegramApiBase() {
+  const t = process.env.TELEGRAM_BOT_TOKEN;
+  if (!t || !String(t).trim()) {
+    throw new Error('Missing TELEGRAM_BOT_TOKEN (Vercel → Environment Variables)');
+  }
+  return `https://api.telegram.org/bot${String(t).trim()}`;
+}
 
 export default async function handler(req, res) {
   try {
+    const TG_API = telegramApiBase();
+    const base =
+      (process.env.PUBLIC_BASE_URL || '').replace(/\/$/, '') ||
+      (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : '') ||
+      'https://tanaka-stock-analyzer.vercel.app';
+    const WEBHOOK_URL = `${base}/api/telegram`;
+
     // 1. Set webhook
     const whResp = await fetch(`${TG_API}/setWebhook`, {
       method: 'POST',
@@ -39,7 +52,8 @@ export default async function handler(req, res) {
           { command: 'profile',   description: 'Set risk level — LOW / MEDIUM / HIGH' },
           { command: 'explain',   description: 'Understand results — EXPLAIN BUY or SELL' },
           { command: 'balance',   description: 'Set initial balance — BALANCE 1000' },
-          { command: 'clear',     description: 'Reset portfolio — CLEAR YES' }
+          { command: 'clear',     description: 'Reset portfolio — CLEAR YES' },
+          { command: 'check-top-mover', description: 'Top movers — live during daily scan' }
         ]
       })
     });

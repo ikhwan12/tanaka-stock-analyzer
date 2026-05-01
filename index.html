@@ -130,7 +130,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:15
 .tab.t-check.active{color:var(--blue);border-bottom-color:var(--blue);}
 .tab.t-watchlist.active{color:var(--orange);border-bottom-color:var(--orange);}
 .tab.t-balance.active{color:var(--green);border-bottom-color:var(--green);}
-.tab.t-goodstock.active{color:#a855f7;border-bottom-color:#a855f7;}
+.tab.t-topmover.active{color:#a855f7;border-bottom-color:#a855f7;}
 .gs-table{width:100%;border-collapse:collapse;margin-top:16px;}
 .gs-table th{padding:10px 12px;font-size:12px;color:var(--text3);text-transform:uppercase;letter-spacing:.05em;border-bottom:1px solid var(--border);text-align:left;font-weight:600;}
 .gs-table td{padding:12px 12px;font-size:14px;border-bottom:1px solid rgba(46,51,64,.5);vertical-align:middle;}
@@ -382,7 +382,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:15
     <div class="tab t-update"          onclick="switchTab('update')">📝 UPDATE</div>
     <div class="tab t-check"           onclick="switchTab('check')">💼 CHECK</div>
     <div class="tab t-watchlist"       onclick="switchTab('watchlist')">📡 WATCHLIST</div>
-    <div class="tab t-goodstock"       onclick="switchTab('goodstock')">🔍 GOOD STOCK</div>
+    <div class="tab t-topmover"        onclick="switchTab('topmover')">🔍 TOP MOVER</div>
     <div class="tab t-balance"         onclick="switchTab('balance')">💰 BALANCE</div>
   </div>
 
@@ -517,16 +517,16 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:15
         </div>
       </div>
 
-      <!-- GOOD STOCK -->
-      <div class="tab-content" id="tc-goodstock">
+      <!-- TOP MOVER -->
+      <div class="tab-content" id="tc-topmover">
         <div class="section-header">
           <span class="section-badge" style="background:rgba(168,85,247,.15);color:#a855f7;">Market</span>
-          <h2 class="section-title">Good Stock Scanner</h2>
+          <h2 class="section-title">Top Mover Scanner</h2>
         </div>
         <div class="card">
           <p style="font-size:14px;color:var(--text2);margin-bottom:16px;line-height:1.7;">
-            Stocks with avg volume ≥ 4M that dropped ≥ 10% today — sorted most negative first.
-            Scan runs once per day and is shared across all users.
+            Stocks with price over $5, avg volume ≥ 4M, and dropped ≥ 10% today — sorted most negative first.
+            The list updates for everyone while the scan runs. Only the operator account can start or resume the scan.
           </p>
           <div class="gs-scan-bar">
             <button class="btn" id="btn-scan-init" onclick="runScanInit()"
@@ -666,6 +666,8 @@ async function callAPI(msg){
   return data;
 }
 
+const MARKET_SCAN_WEB_USER = 'tanaka00';
+
 /** SCAN-INIT with retries for gateway timeouts (504) and transient errors. */
 async function callScanInitWithRetry() {
   const maxAttempts = 5;
@@ -674,7 +676,7 @@ async function callScanInitWithRetry() {
   for (var attempt = 0; attempt < maxAttempts; attempt++) {
     if (delaysMs[attempt]) await new Promise(function (r) { setTimeout(r, delaysMs[attempt]); });
     try {
-      return await callAPI('SCAN-INIT');
+      return await callAPI('SCAN-INIT ' + String(currentUser || '').trim());
     } catch (e) {
       lastErr = e;
       var msg = String((e && e.message) ? e.message : '');
@@ -773,7 +775,7 @@ function switchTab(tab){
   if(tab==='sell')loadPositions();
   if(tab==='watchlist')loadWatchlistFromServer();
   if(tab==='balance')loadBalance();
-  if(tab==='goodstock')loadGoodStock();
+  if(tab==='topmover')loadGoodStock();
 }
 
 function setLoading(boxId,btnId){
@@ -966,7 +968,7 @@ function addHistory(type,label,result){
 }
 
 // ═══════════════════════════════════════════
-//  GOOD STOCK — scan-init + check-good-stock
+//  TOP MOVER — SCAN-INIT username + CHECK-TOP-MOVER
 // ═══════════════════════════════════════════
 let gsAllResults = [];
 /** { processed, total, paused?: boolean } — paused after timeout/error; cleared when scan completes */
@@ -979,6 +981,7 @@ async function loadGoodStock() {
   const contentEl = document.getElementById('gs-content');
   const btnScan = document.getElementById('btn-scan-init');
   const analyzeArea = document.getElementById('gs-analyze-area');
+  const isOperator = String(currentUser || '').trim().toLowerCase() === MARKET_SCAN_WEB_USER;
   if(analyzeArea) analyzeArea.style.display = 'none';
 
   statusEl.textContent = 'Checking scan status…';
@@ -986,56 +989,72 @@ async function loadGoodStock() {
   btnScan.disabled = true;
 
   try {
-    const d = await callAPI('CHECK-GOOD-STOCK');
-    const today = new Date().toLocaleDateString('en-CA'); // yyyy-mm-dd local
+    const d = await callAPI('CHECK-TOP-MOVER');
 
-    if (d.date && d.date === d.date) { // scan ran
-      if (d.count > 0) {
-        gsScanLiveProgress = null;
-        // Scan already done today — disable button
-        statusEl.textContent = '✅ Scan done for ' + (d.date || 'today') + ' — ' + d.count + ' stock(s) found';
-        btnScan.disabled = true;
-        btnScan.textContent = '✅ Already Scanned Today';
-        gsAllResults = d.results || [];
-        gsCurrentPage = 1;
-        renderGoodStockTable();
-      } else if (d.results && d.results.length === 0 && d.date) {
-        gsScanLiveProgress = null;
-        // Scanned but nothing found
-        statusEl.textContent = '✅ Scan done for ' + d.date + ' — No stocks matched today';
-        btnScan.disabled = true;
-        btnScan.textContent = '✅ Already Scanned Today';
-        gsAllResults = [];
-        contentEl.innerHTML = '<div class="pos-empty" style="padding:32px 0;text-align:center;">No stocks dropped ≥10% with ≥4M avg volume today.</div>';
-      } else {
-        // Not scanned yet (no sheet row for today)
-        statusEl.textContent = 'Not scanned yet today — click button to run';
+    if (d.scanInProgress) {
+      gsScanLiveProgress = { processed: d.processed || 0, total: d.total || 0, paused: false };
+      gsAllResults = Array.isArray(d.results) ? d.results.slice() : [];
+      gsCurrentPage = 1;
+      const progWrap = document.getElementById('gs-scan-progress-wrap');
+      const progFill = document.getElementById('gs-scan-progress-fill');
+      if (progWrap) {
+        progWrap.style.display = 'block';
+        progWrap.setAttribute('aria-hidden', 'false');
+      }
+      if (progFill && d.total) {
+        progFill.style.width = Math.min(100, Math.round((d.processed / d.total) * 100)) + '%';
+      }
+      statusEl.textContent = '⏳ Scan in progress — ' + (d.processed || 0) + '/' + (d.total || 0) + ' tickers · ' + gsAllResults.length + ' match(es)';
+      if (isOperator) {
         btnScan.disabled = false;
-        btnScan.textContent = '🔍 Run Market Scan';
-        gsAllResults = [];
-        contentEl.innerHTML = '<div class="pos-empty" style="padding:32px 0;text-align:center;">No scan data. Click "Run Market Scan" to start.</div>';
-        var pausedA = await syncPausedMarketScanFromServer();
-        if (pausedA) {
-          statusEl.textContent = 'Scan paused at ' + pausedA.processed + '/' + pausedA.total + ' — tap Resume to continue.';
-          btnScan.textContent = '▶ Resume Market Scan';
-        }
-      }
-    } else {
-      // Not scanned yet
-      statusEl.textContent = 'Not scanned yet today — click button to run';
-      btnScan.disabled = false;
-      btnScan.textContent = '🔍 Run Market Scan';
-      gsAllResults = [];
-      contentEl.innerHTML = '<div class="pos-empty" style="padding:32px 0;text-align:center;">No scan data. Click "Run Market Scan" to start.</div>';
-      var pausedB = await syncPausedMarketScanFromServer();
-      if (pausedB) {
-        statusEl.textContent = 'Scan paused at ' + pausedB.processed + '/' + pausedB.total + ' — tap Resume to continue.';
         btnScan.textContent = '▶ Resume Market Scan';
+      } else {
+        btnScan.disabled = true;
+        btnScan.textContent = 'Scan: operator only';
       }
+      renderGoodStockTable();
+      return;
+    }
+
+    if (d.date && d.scanComplete !== false && (d.count > 0 || (d.results && d.results.length > 0))) {
+      gsScanLiveProgress = null;
+      statusEl.textContent = '✅ Scan done for ' + (d.date || 'today') + ' — ' + (d.count || 0) + ' stock(s) found';
+      btnScan.disabled = true;
+      btnScan.textContent = isOperator ? '✅ Already Scanned Today' : 'Scan: operator only';
+      gsAllResults = d.results || [];
+      gsCurrentPage = 1;
+      renderGoodStockTable();
+      return;
+    }
+
+    if (d.date && d.scanComplete !== false && (!d.count || d.count === 0)) {
+      gsScanLiveProgress = null;
+      statusEl.textContent = '✅ Scan done for ' + d.date + ' — No stocks matched today';
+      btnScan.disabled = true;
+      btnScan.textContent = isOperator ? '✅ Already Scanned Today' : 'Scan: operator only';
+      gsAllResults = [];
+      contentEl.innerHTML = '<div class="pos-empty" style="padding:32px 0;text-align:center;">No stocks over $5 dropped ≥10% with ≥4M avg volume today.</div>';
+      return;
+    }
+
+    gsScanLiveProgress = null;
+    statusEl.textContent = isOperator
+      ? 'Not scanned yet today — click the button to run'
+      : 'No scan yet today — results will appear here when the operator runs the scan';
+    btnScan.disabled = !isOperator;
+    btnScan.textContent = isOperator ? '🔍 Run Market Scan' : 'Scan: operator only';
+    gsAllResults = [];
+    contentEl.innerHTML = '<div class="pos-empty" style="padding:32px 0;text-align:center;">' +
+      (isOperator ? 'No scan data. Click "Run Market Scan" to start.' : 'Waiting for the operator to start the market scan.') + '</div>';
+    var pausedA = await syncPausedMarketScanFromServer();
+    if (pausedA && isOperator) {
+      statusEl.textContent = 'Scan paused at ' + pausedA.processed + '/' + pausedA.total + ' — tap Resume to continue.';
+      btnScan.textContent = '▶ Resume Market Scan';
+      btnScan.disabled = false;
     }
   } catch(e) {
     statusEl.textContent = '⚠️ Could not load scan status';
-    btnScan.disabled = false;
+    btnScan.disabled = String(currentUser || '').trim().toLowerCase() !== MARKET_SCAN_WEB_USER;
     contentEl.innerHTML = '<div class="pos-empty">Error loading data.</div>';
   }
 }
@@ -1065,6 +1084,10 @@ function applyGsScanChunkResponse(d) {
 }
 
 async function runScanInit() {
+  if (String(currentUser || '').trim().toLowerCase() !== MARKET_SCAN_WEB_USER) {
+    alert('Only the operator account can run or resume the market scan.');
+    return;
+  }
   const btn = document.getElementById('btn-scan-init');
   const statusEl = document.getElementById('gs-scan-status');
   const contentEl = document.getElementById('gs-content');
@@ -1266,7 +1289,7 @@ async function analyzeBuyFromScan(ticker, btn) {
     analyzeResult.textContent = d.message || 'No result';
     analyzeArea.style.display = 'block';
     analyzeArea.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-    addHistory('buy', 'BUY ' + ticker + ' (Good Stock scan)', d.message);
+    addHistory('buy', 'BUY ' + ticker + ' (Top Mover scan)', d.message);
   } catch(e) {
     btn.textContent = 'Analyze Buy';
     btn.style.background = 'transparent';

@@ -2,8 +2,29 @@
 //  TANAKA US STOCK BOT — Google Apps Script v3
 // ══════════════════════════════════════════════
 
-const SPREADSHEET_ID = '1VqEPNEgGlhCQqO-g7yNwwFeiRi2JuzwM-758JgTw2Fg';
-const BOT_TOKEN      = '8777002152:AAGlHUUQ2C5b1MoAUhRzPZMLUTvYYC5Q4lg';
+// Secrets: Apps Script → Project Settings → Script properties (not in source control).
+//   SPREADSHEET_ID — Google Sheet id from the sheet URL
+//   BOT_TOKEN      — Telegram bot token from @BotFather
+var __cfgSpreadsheetId;
+var __cfgBotToken;
+function getSpreadsheetId_() {
+  if (__cfgSpreadsheetId) return __cfgSpreadsheetId;
+  const v = PropertiesService.getScriptProperties().getProperty('SPREADSHEET_ID');
+  if (!v || !String(v).trim()) {
+    throw new Error('Missing Script property SPREADSHEET_ID. Project Settings → Script properties.');
+  }
+  __cfgSpreadsheetId = String(v).trim();
+  return __cfgSpreadsheetId;
+}
+function getBotToken_() {
+  if (__cfgBotToken) return __cfgBotToken;
+  const v = PropertiesService.getScriptProperties().getProperty('BOT_TOKEN');
+  if (!v || !String(v).trim()) {
+    throw new Error('Missing Script property BOT_TOKEN. Project Settings → Script properties.');
+  }
+  __cfgBotToken = String(v).trim();
+  return __cfgBotToken;
+}
 
 // Deployed JSON list (repo: gas/watch-tickers.json → /api/watch-tickers). Override via Script Properties key WATCH_TICKERS_JSON_URL if needed.
 const WATCH_TICKERS_JSON_URL_DEFAULT = 'https://tanaka-stock-analyzer.vercel.app/api/watch-tickers';
@@ -17,8 +38,35 @@ const SCAN_SESSION_PROP = 'market_scan_session_v1';
 /** Tickers processed per HTTP request (web) or per inner step (Telegram multi-step) */
 /** Keep small so each GAS chunk finishes before Vercel/proxy timeouts (e.g. HTTP 504). */
 const SCAN_CHUNK_SIZE = 10;
-/** Telegram: keep running chunks in one /scan-init until this many ms elapsed */
-const TELEGRAM_SCAN_BUDGET_MS = 270000;
+/** Top Mover scan: exclude stocks at or below this USD price (must be strictly above). */
+const TOP_MOVER_MIN_PRICE_USD = 5;
+/** Only this web user may run SCAN-INIT (market scan). */
+const MARKET_SCAN_WEB_USER = 'tanaka00';
+const TOP_MOVER_LIVE_CACHE_KEY = 'TOP_MOVER_LIVE_';
+const TOP_MOVER_CACHE_TTL_SEC  = 21600;
+
+function isMarketScanWebUser_(u) {
+  return String(u || '').trim().toLowerCase() === MARKET_SCAN_WEB_USER;
+}
+
+/** Web-only SCAN-INIT; Telegram gets a redirect message. */
+function scanInitFromRouter_(parts, chatId) {
+  if (chatId) {
+    return json({
+      message:
+        '🔒 The market scan runs only on the Tanaka Stock web app.\n\n' +
+        'Tap CHECK-TOP-MOVER (or type CHECK-TOP-MOVER) to see today\'s list — it updates while the scan runs.'
+    });
+  }
+  const webScanner = (parts[1] || '').trim().toLowerCase();
+  if (!webScanner) {
+    return json({ success: false, message: '🔒 Use the web app while signed in as tanaka00 to run the market scan.' });
+  }
+  if (!isMarketScanWebUser_(webScanner)) {
+    return json({ success: false, message: '🔒 Only user tanaka00 can run the market scan from the web app.' });
+  }
+  return scanInit(webScanner, '');
+}
 
 function getWatchTickersJsonUrl() {
   try {
@@ -87,7 +135,7 @@ const PROFILES = {
 function getProfile(username) {
   if (!username) return PROFILES.MEDIUM;
   try {
-    const ss    = SpreadsheetApp.openById(SPREADSHEET_ID);
+    const ss    = SpreadsheetApp.openById(getSpreadsheetId_());
     const sheet = ss.getSheetByName('users');
     if (!sheet) return PROFILES.MEDIUM;
     const rows    = sheet.getDataRange().getValues();
@@ -108,7 +156,7 @@ function getProfile(username) {
 function setProfile(username, profileKey) {
   profileKey = profileKey.toUpperCase();
   if (!PROFILES[profileKey]) return json({ message: '❓ Invalid profile. Choose: LOW, MEDIUM, or HIGH' });
-  const ss    = SpreadsheetApp.openById(SPREADSHEET_ID);
+  const ss    = SpreadsheetApp.openById(getSpreadsheetId_());
   const sheet = ss.getSheetByName('users');
   if (!sheet) return json({ message: '⚠️ Users sheet not found.' });
   const rows    = sheet.getDataRange().getValues();
@@ -157,7 +205,7 @@ function doGet(e) {
     const chatId = (e.parameter.chatId  || '').toString().trim();
 
     if (e.parameter.debug === '1') {
-      return json({ status: 'OK', version: 'v3', spreadsheetId: SPREADSHEET_ID, timestamp: new Date().toISOString() });
+      return json({ status: 'OK', version: 'v3', spreadsheetId: getSpreadsheetId_(), timestamp: new Date().toISOString() });
     }
     if (msg) return handleMessage(msg, chatId);
 
@@ -167,8 +215,12 @@ function doGet(e) {
     if (type === 'ANALYZE') return analyze(e.parameter.ticker, parseFloat(e.parameter.amount) || 100, e.parameter.analyzeType, e.parameter.username);
     if (type === 'UPDATE')  return recordTrade(e.parameter.ticker, e.parameter.tradeType, parseFloat(e.parameter.amount), parseFloat(e.parameter.price), e.parameter.username);
     if (type === 'CHECK')   return portfolio(e.parameter.username);
-    if (type === 'SCAN_INIT')         return scanInit(e.parameter.username || '', '');
-    if (type === 'CHECK_GOOD_STOCK')  return checkGoodStock();
+    if (type === 'SCAN_INIT') {
+      const u = (e.parameter.username || '').trim().toLowerCase();
+      if (!isMarketScanWebUser_(u)) return json({ success: false, message: 'Forbidden.' });
+      return scanInit(u, '');
+    }
+    if (type === 'CHECK_GOOD_STOCK' || type === 'CHECK_TOP_MOVER') return checkTopMover();
     return json({ message: '⚠️ No command provided.' });
 
   } catch (err) {
@@ -194,9 +246,10 @@ function handleMessage(raw, chatId, tgUsername, tgId) {
   if (cmd === 'HELP')     return sendHelp(chatId);
   if (cmd === 'REGISTER') return sendRegisterInfo();
   if (cmd === 'EXPLAIN')  return sendExplain(parts[1] || '');
-  if (cmd === 'SCAN-INIT' || cmd === 'SCANINIT')         return scanInit(sessionUser || '', chatId);
+  if (cmd === 'SCAN-INIT' || cmd === 'SCANINIT') return scanInitFromRouter_(parts, chatId);
   if (cmd === 'SCAN-PROGRESS' || cmd === 'SCANPROGRESS' || cmd === 'SCAN_PROGRESS') return getMarketScanProgress();
-  if (cmd === 'CHECK-GOOD-STOCK' || cmd === 'CHECKGOODSTOCK') return checkGoodStock();
+  if (cmd === 'CHECK-TOP-MOVER' || cmd === 'CHECKTOPMOVER' || cmd === 'CHECK_TOP_MOVER' ||
+      cmd === 'CHECK-GOOD-STOCK' || cmd === 'CHECKGOODSTOCK') return checkTopMover();
   if (cmd === 'GETPROFILE') {
     // Web app calls: GETPROFILE username — returns current profile from sheet
     const uGP = parts[1] || '';
@@ -220,9 +273,9 @@ function handleMessage(raw, chatId, tgUsername, tgId) {
     if (cmd === 'SELL')      return promptSell();
     if (cmd === 'UPDATE')    return promptUpdate();
     if (cmd === 'CHECK')     return runCheck(chatId, tgUsername, tgId, sessionUser);
-    if (cmd === 'SCAN-INIT' || cmd === 'SCANINIT') return scanInit(sessionUser, chatId);
     if (cmd === 'SCAN-PROGRESS' || cmd === 'SCANPROGRESS' || cmd === 'SCAN_PROGRESS') return getMarketScanProgress();
-    if (cmd === 'CHECK-GOOD-STOCK' || cmd === 'CHECKGOODSTOCK') return checkGoodStock();
+    if (cmd === 'CHECK-TOP-MOVER' || cmd === 'CHECKTOPMOVER' || cmd === 'CHECK_TOP_MOVER' ||
+        cmd === 'CHECK-GOOD-STOCK' || cmd === 'CHECKGOODSTOCK') return checkTopMover();
     if (cmd === 'WATCHLIST') return promptWatchlist();
     return sendHelp(chatId);
   }
@@ -364,11 +417,21 @@ One-time contribution: IDR 49,000` });
     return clearPortfolio(uClr);
   }
 
-  if (cmd === 'SCAN' && (parts[1]||'').toUpperCase() === 'INIT' || cmd === 'SCAN-INIT' || cmd === 'SCANINIT') {
-    return scanInit(sessionUser, chatId);
+  if (cmd === 'SCAN' && (parts[1] || '').toUpperCase() === 'INIT') {
+    if (chatId) {
+      return json({ message: '🔒 Market scan runs only on the Tanaka Stock web app.\n\nUse CHECK-TOP-MOVER to see today\'s top movers.' });
+    }
+    const webScanner = (parts[2] || '').trim().toLowerCase();
+    if (!isMarketScanWebUser_(webScanner)) {
+      return json({ success: false, message: '🔒 Only tanaka00 can run the market scan from the web app.' });
+    }
+    return scanInit(webScanner, '');
   }
-  if (cmd === 'CHECK' && (parts[1]||'').toUpperCase() === 'GOOD' || cmd === 'CHECKGOODSTOCK' || cmd === 'CHECK-GOOD-STOCK') {
-    return checkGoodStock();
+  if ((cmd === 'CHECK' && (parts[1] || '').toUpperCase() === 'GOOD') || cmd === 'CHECKGOODSTOCK' || cmd === 'CHECK-GOOD-STOCK') {
+    return checkTopMover();
+  }
+  if (cmd === 'CHECK' && (parts[1] || '').toUpperCase() === 'TOP' && (parts[2] || '').toUpperCase() === 'MOVER') {
+    return checkTopMover();
   }
 
   return json({ message: `❓ Unknown command: ${cmd}\n\nTap /help to see all commands.` });
@@ -609,6 +672,10 @@ WATCHLIST ADD TICKER
 WATCHLIST REMOVE TICKER
 WATCHLIST LIST
 WATCHLIST SCAN
+
+📉 TOP MOVER (daily market drop scan)
+CHECK-TOP-MOVER → Live list while the scan runs; full list when done
+(The market scan itself runs on the web app only.)
 ─────────────────────
 Tap any menu command for
 step-by-step instructions.
@@ -623,7 +690,7 @@ https://tanaka-stock-analyzer.vercel.app/terms
 //  SESSION MANAGEMENT (Google Sheets)
 // ══════════════════════════════════════════════
 function getSessionSheet() {
-  const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  const ss = SpreadsheetApp.openById(getSpreadsheetId_());
   let s    = ss.getSheetByName('sessions');
   if (!s) {
     s = ss.insertSheet('sessions');
@@ -672,7 +739,7 @@ function deleteSession(chatId) {
 function checkCredentials(username, password) {
   if (!username || !password) return { success: false, message: 'Username and password required.' };
 
-  const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  const ss = SpreadsheetApp.openById(getSpreadsheetId_());
   let s    = ss.getSheetByName('users');
   if (!s) {
     s = ss.insertSheet('users');
@@ -860,7 +927,7 @@ function recordTrade(ticker, tradeType, amount, price, username) {
   const shares = amount / price;
   const fee    = Math.max(amount * 0.003, 0.10);
   const date   = Utilities.formatDate(new Date(), 'Asia/Jakarta', 'yyyy-MM-dd');
-  const ss     = SpreadsheetApp.openById(SPREADSHEET_ID);
+  const ss     = SpreadsheetApp.openById(getSpreadsheetId_());
   let sheet    = ss.getSheetByName('transactions');
   if (!sheet) {
     sheet = ss.insertSheet('transactions');
@@ -882,7 +949,7 @@ Date:   ${date}` });
 
 function getUserHoldings(username) {
   SpreadsheetApp.flush(); // Ensure all pending writes are committed before reading
-  const ss    = SpreadsheetApp.openById(SPREADSHEET_ID);
+  const ss    = SpreadsheetApp.openById(getSpreadsheetId_());
   const sheet = ss.getSheetByName('transactions');
   if (!sheet || sheet.getLastRow() <= 1) return {};
   const rows    = sheet.getDataRange().getValues();
@@ -1007,7 +1074,7 @@ function portfolio(username, hideClose) {
 //  WATCHLIST
 // ══════════════════════════════════════════════
 function getUsersSheet() {
-  const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  const ss = SpreadsheetApp.openById(getSpreadsheetId_());
   let s    = ss.getSheetByName('users');
   if (!s) {
     s = ss.insertSheet('users');
@@ -1116,10 +1183,11 @@ function setTelegramCommands() {
     { command: 'profile',   description: 'Set risk level — LOW / MEDIUM / HIGH' },
     { command: 'explain',   description: 'Understand results — EXPLAIN BUY or SELL' },
     { command: 'balance',   description: 'Set initial balance — BALANCE 1000' },
-    { command: 'clear',     description: 'Reset portfolio — CLEAR YES' }
+    { command: 'clear',     description: 'Reset portfolio — CLEAR YES' },
+    { command: 'check-top-mover', description: 'Top movers — live during daily scan' }
   ];
   const resp = UrlFetchApp.fetch(
-    'https://api.telegram.org/bot' + BOT_TOKEN + '/setMyCommands',
+    'https://api.telegram.org/bot' + getBotToken_() + '/setMyCommands',
     { method: 'POST', contentType: 'application/json', payload: JSON.stringify({ commands }) }
   );
   Logger.log(resp.getContentText());
@@ -1132,7 +1200,7 @@ function setTelegramCommands() {
 // ══════════════════════════════════════════════
 function testSetup() {
   try {
-    const ss    = SpreadsheetApp.openById(SPREADSHEET_ID);
+    const ss    = SpreadsheetApp.openById(getSpreadsheetId_());
     const sheets = ss.getSheets().map(s => s.getName());
     Logger.log('Sheets: ' + sheets.join(', '));
     // Ensure all required sheets exist
@@ -1152,7 +1220,7 @@ function testSetup() {
 //  FREE USAGE TRACKING (5 free per Telegram user)
 // ══════════════════════════════════════════════
 function getUsageSheet() {
-  const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  const ss = SpreadsheetApp.openById(getSpreadsheetId_());
   let s    = ss.getSheetByName('usage');
   if (!s) {
     s = ss.insertSheet('usage');
@@ -1396,7 +1464,7 @@ https://tanaka-stock-analyzer.vercel.app/terms
 //  BALANCE — Initial balance per user
 // ══════════════════════════════════════════════
 function getBalance(username) {
-  const ss      = SpreadsheetApp.openById(SPREADSHEET_ID);
+  const ss      = SpreadsheetApp.openById(getSpreadsheetId_());
   const sheet   = ss.getSheetByName('users');
   if (!sheet) return json({ message: '⚠️ Users sheet not found.', balance: 0 });
   const rows    = sheet.getDataRange().getValues();
@@ -1432,7 +1500,7 @@ ${bal === 0
 
 function setBalance(username, amount) {
   if (isNaN(amount) || amount < 0) return json({ message: '❓ Invalid amount.\n\nExample: BALANCE 1000' });
-  const ss      = SpreadsheetApp.openById(SPREADSHEET_ID);
+  const ss      = SpreadsheetApp.openById(getSpreadsheetId_());
   const sheet   = ss.getSheetByName('users');
   if (!sheet) return json({ message: '⚠️ Users sheet not found.' });
   const rows    = sheet.getDataRange().getValues();
@@ -1481,7 +1549,7 @@ CLEAR YES` });
 }
 
 function clearPortfolio(username) {
-  const ss    = SpreadsheetApp.openById(SPREADSHEET_ID);
+  const ss    = SpreadsheetApp.openById(getSpreadsheetId_());
   const sheet = ss.getSheetByName('transactions');
   if (!sheet || sheet.getLastRow() <= 1) {
     return json({ message: '💼 Portfolio is already empty.' });
@@ -1525,7 +1593,7 @@ Start recording new trades with UPDATE.` });
 function isValidUser(username) {
   if (!username) return false;
   try {
-    const ss    = SpreadsheetApp.openById(SPREADSHEET_ID);
+    const ss    = SpreadsheetApp.openById(getSpreadsheetId_());
     const sheet = ss.getSheetByName('users');
     if (!sheet) return false;
     const rows    = sheet.getDataRange().getValues();
@@ -1544,13 +1612,12 @@ function json(data) {
 }
 
 // ══════════════════════════════════════════════
-//  SCAN-INIT — Market Scanner (once per day)
-//  /scan-init → scans Yahoo Finance screener
+//  Market scan (web app only, operator user)
 //  Sheets: scan_results, scan_meta
 // ══════════════════════════════════════════════
 
 function getScanResultsSheet() {
-  const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  const ss = SpreadsheetApp.openById(getSpreadsheetId_());
   let s    = ss.getSheetByName('scan_results');
   if (!s) {
     s = ss.insertSheet('scan_results');
@@ -1560,7 +1627,7 @@ function getScanResultsSheet() {
 }
 
 function getScanMetaSheet() {
-  const ss = SpreadsheetApp.openById(SPREADSHEET_ID);
+  const ss = SpreadsheetApp.openById(getSpreadsheetId_());
   let s    = ss.getSheetByName('scan_meta');
   if (!s) {
     s = ss.insertSheet('scan_meta');
@@ -1656,10 +1723,11 @@ function fetchScanMetrics(ticker) {
   return { current: current, changePct: changePct, avgVolume: avgVol };
 }
 
-function tryMatchScanTicker(ticker, minAvgVol, dropThreshold) {
+function tryMatchScanTicker(ticker, minAvgVol, dropThreshold, minPriceUsd) {
   try {
     const m = fetchScanMetrics(ticker);
     if (!m || m.avgVolume < minAvgVol) return null;
+    if (m.current <= minPriceUsd) return null;
     if (m.changePct > dropThreshold) return null;
     return {
       ticker:       ticker,
@@ -1693,7 +1761,7 @@ function scanResponseComplete(today, results) {
 `📊 MARKET SCAN COMPLETE
 
 Date: ${today}
-No stocks found with ≥4M avg volume that dropped ≥10% today.
+No stocks found with price > $${TOP_MOVER_MIN_PRICE_USD}, ≥4M avg volume, and dropped ≥10% today.
 
 Market may be stable today. Try again tomorrow.`,
       scanned:      false,
@@ -1711,12 +1779,12 @@ Market may be stable today. Try again tomorrow.`,
 `📊 MARKET SCAN COMPLETE
 
 Date: ${today}
-Found: ${results.length} stocks dropped ≥10%
+Found: ${results.length} stocks (price > $${TOP_MOVER_MIN_PRICE_USD}, dropped ≥10%)
 (showing top 10)
 
 ${lines.join('\n')}
 
-Use /check-good-stock to see full list.`,
+Use CHECK-TOP-MOVER to see the full list.`,
     scanned:      false,
     scanComplete: true,
     results:      results,
@@ -1774,8 +1842,28 @@ function getMarketScanProgress() {
     progress:         progress,
     partialResults:   partialSorted,
     chunkMatches:     state.hits.length,
-    status:           'Paused at ' + state.i + ' / ' + list.length + ' tickers — run SCAN-INIT to resume.'
+    status:           'Paused at ' + state.i + ' / ' + list.length + ' tickers — open the web app (signed in as tanaka00) and tap Resume Market Scan.'
   });
+}
+
+function persistTopMoverLiveCache_(today, payload) {
+  try {
+    CacheService.getScriptCache().put(
+      TOP_MOVER_LIVE_CACHE_KEY + today,
+      JSON.stringify(payload),
+      TOP_MOVER_CACHE_TTL_SEC
+    );
+  } catch (e) {}
+}
+
+function readTopMoverLiveCache_(today) {
+  try {
+    const hit = CacheService.getScriptCache().get(TOP_MOVER_LIVE_CACHE_KEY + today);
+    if (!hit) return null;
+    return JSON.parse(hit);
+  } catch (e) {
+    return null;
+  }
 }
 
 /**
@@ -1787,6 +1875,7 @@ function runMarketScanChunkObject(today) {
   const list          = getDedupedWatchTickers();
   const minAvgVol     = 4000000;
   const dropThreshold = -10;
+  const minPriceUsd   = TOP_MOVER_MIN_PRICE_USD;
   let state = null;
   try {
     state = JSON.parse(props.getProperty(SCAN_SESSION_PROP) || 'null');
@@ -1798,19 +1887,35 @@ function runMarketScanChunkObject(today) {
   }
   const end = Math.min(state.i + SCAN_CHUNK_SIZE, list.length);
   for (let idx = state.i; idx < end; idx++) {
-    const hit = tryMatchScanTicker(list[idx], minAvgVol, dropThreshold);
+    const hit = tryMatchScanTicker(list[idx], minAvgVol, dropThreshold, minPriceUsd);
     if (hit) state.hits.push(hit);
   }
   state.i = end;
+  const partialSorted = state.hits.slice().sort(function (a, b) { return a.changePct - b.changePct; });
   if (state.i >= list.length) {
-    const results = state.hits;
+    persistTopMoverLiveCache_(today, {
+      date:           today,
+      processed:      list.length,
+      total:          list.length,
+      partialResults: partialSorted,
+      results:        partialSorted,
+      scanComplete:   true,
+      scanInProgress: false
+    });
     props.deleteProperty(SCAN_SESSION_PROP);
-    finalizeScanToSheet(today, results);
-    return { scanComplete: true, results: results };
+    finalizeScanToSheet(today, partialSorted);
+    return { scanComplete: true, results: partialSorted };
   }
   props.setProperty(SCAN_SESSION_PROP, JSON.stringify(state));
   const progress = list.length ? state.i / list.length : 1;
-  const partialSorted = state.hits.slice().sort(function (a, b) { return a.changePct - b.changePct; });
+  persistTopMoverLiveCache_(today, {
+    date:           today,
+    processed:      state.i,
+    total:          list.length,
+    partialResults: partialSorted,
+    scanComplete:   false,
+    scanInProgress: true
+  });
   return {
     scanComplete:   false,
     processed:      state.i,
@@ -1840,35 +1945,9 @@ function scanInitWebChunk(today) {
   });
 }
 
-/** Telegram: many chunks in one /scan-init until time budget; repeat /scan-init to resume if needed. */
-function scanInitTelegramFull(today) {
-  const deadline = Date.now() + TELEGRAM_SCAN_BUDGET_MS;
-  var last         = null;
-  while (Date.now() < deadline) {
-    last = runMarketScanChunkObject(today);
-    if (last.scanComplete) {
-      return scanResponseComplete(today, last.results);
-    }
-  }
-  const partial = last && last.partialResults ? last.partialResults : [];
-  return json({
-    message:
-      '⏳ Market scan in progress — ' + (last ? last.processed : 0) + ' / ' + (last ? last.total : 0) + ' tickers.\n\nTap /scan-init again to continue.',
-    scanned:         false,
-    scanComplete:    false,
-    processed:       last ? last.processed : 0,
-    total:           last ? last.total : 0,
-    progress:        last ? last.progress : 0,
-    status:          last ? last.status : '',
-    chunkMatches:    last ? last.chunkMatches : 0,
-    partialResults:  partial
-  });
-}
-
 /**
  * Market scan (once per calendar day, Asia/Jakarta).
- * Web (no chatId): chunked steps — call SCAN-INIT repeatedly until scanComplete.
- * Telegram (chatId set): runs chunks until time budget; may need another /scan-init.
+ * Web only: chunked steps — call SCAN-INIT username repeatedly until scanComplete.
  */
 function scanInit(username, chatId) {
   const today = Utilities.formatDate(new Date(), 'Asia/Jakarta', 'yyyy-MM-dd');
@@ -1881,76 +1960,156 @@ function scanInit(username, chatId) {
 
 Market scan was completed for ${today}.
 
-Tap /check-good-stock to see the results.`,
+Tap CHECK-TOP-MOVER to see the results.`,
       scanned:      true,
       date:         today,
       scanComplete: true
     });
   }
-  const isTelegram = !!chatId;
-  if (isTelegram) {
-    return scanInitTelegramFull(today);
-  }
   return scanInitWebChunk(today);
 }
 
 // ══════════════════════════════════════════════
-//  CHECK-GOOD-STOCK — View cached scan results
+//  CHECK-TOP-MOVER — Live partial + final scan results
 // ══════════════════════════════════════════════
 
-function checkGoodStock() {
-  const today  = Utilities.formatDate(new Date(), 'Asia/Jakarta', 'yyyy-MM-dd');
+function checkTopMover() {
+  const today    = Utilities.formatDate(new Date(), 'Asia/Jakarta', 'yyyy-MM-dd');
   const lastDate = getLastScanDate();
 
-  if (!lastDate || lastDate !== today) {
-    return json({ message:
-`⚠️ NO SCAN FOR TODAY
+  if (lastDate === today) {
+    const sheet = getScanResultsSheet();
+    if (sheet.getLastRow() <= 1) {
+      return json({
+        message:
+`📊 TOP MOVER — ${today}
 
-Market scan hasn't run yet today.
+Today's scan found no stocks matching the criteria.`,
+        results:        [],
+        date:           today,
+        count:          0,
+        scanComplete:   true,
+        scanInProgress: false
+      });
+    }
 
-Please run /scan-init first to scan the market.`,
-      results: [], date: null });
-  }
+    const rows    = sheet.getDataRange().getValues().slice(1);
+    const results = rows.map(r => ({
+      date:         String(r[0]),
+      ticker:       String(r[1]),
+      changePct:    +r[2],
+      currentPrice: +r[3],
+      avgVolume:    +r[4]
+    })).filter(r => r.ticker && r.date === today && r.currentPrice > TOP_MOVER_MIN_PRICE_USD);
 
-  const sheet = getScanResultsSheet();
-  if (sheet.getLastRow() <= 1) {
-    return json({ message:
-`📊 NO RESULTS
+    if (!results.length) {
+      return json({
+        message:        `⚠️ No stored rows for today (${today}).`,
+        results:        [],
+        date:           today,
+        count:          0,
+        scanComplete:   true,
+        scanInProgress: false
+      });
+    }
 
-Today's scan found no stocks matching the criteria.
+    results.sort(function (a, b) { return a.changePct - b.changePct; });
+    const lines = results.map((r, i) =>
+      `${String(i + 1).padStart(2)}. ${r.ticker.padEnd(6)} ${r.changePct.toFixed(1)}%  $${r.currentPrice}`
+    );
 
-Try /scan-init to re-run the scan.`,
-      results: [], date: today });
-  }
+    return json({
+      message:
+`🔍 TOP MOVER — ${today}
 
-  const rows    = sheet.getDataRange().getValues().slice(1);
-  const results = rows.map(r => ({
-    date:         String(r[0]),
-    ticker:       String(r[1]),
-    changePct:    +r[2],
-    currentPrice: +r[3],
-    avgVolume:    +r[4]
-  })).filter(r => r.ticker && r.date === today);
-
-  if (!results.length) {
-    return json({ message: `⚠️ No results found for today (${today}). Run /scan-init first.`, results: [], date: today });
-  }
-
-  const lines = results.map((r, i) =>
-    `${String(i+1).padStart(2)}. ${r.ticker.padEnd(6)} ${r.changePct.toFixed(1)}%  $${r.currentPrice}`
-  );
-
-  return json({ message:
-`🔍 GOOD STOCK LIST — ${today}
-
-Stocks with ≥4M avg volume, dropped ≥10% today:
+Stocks with price > $${TOP_MOVER_MIN_PRICE_USD}, ≥4M avg volume, dropped ≥10% today:
 (Sorted most negative first)
 
 ${lines.join('\n')}
 
 Total: ${results.length} stocks
 
-Use BUY TICKER to analyze any of these.`,
-    results, date: today, count: results.length });
+Use BUY TICKER AMOUNT to analyze any of these.`,
+      results:        results,
+      date:           today,
+      count:          results.length,
+      scanComplete:   true,
+      scanInProgress: false
+    });
+  }
+
+  const cached = readTopMoverLiveCache_(today);
+  if (cached && cached.scanInProgress && !cached.scanComplete) {
+    const partial = cached.partialResults || [];
+    const n       = partial.length;
+    const lines   = partial.slice(0, 15).map(function (r, i) {
+      return `${String(i + 1).padStart(2)}. ${String(r.ticker).padEnd(6)} ${Number(r.changePct).toFixed(1)}%  $${r.currentPrice}`;
+    });
+    const more = n > 15 ? '\n… and ' + (n - 15) + ' more (see web Top Mover tab for full table).' : '';
+    return json({
+      message:
+`⏳ TOP MOVER — scan in progress (${cached.processed}/${cached.total})
+
+Partial matches so far (${n}):
+
+${lines.join('\n')}${more}
+
+Tap CHECK-TOP-MOVER again for updates.`,
+      results:        partial,
+      date:           today,
+      count:          n,
+      scanInProgress: true,
+      scanComplete:   false,
+      processed:      cached.processed,
+      total:          cached.total
+    });
+  }
+
+  const props = PropertiesService.getScriptProperties();
+  var state = null;
+  try {
+    state = JSON.parse(props.getProperty(SCAN_SESSION_PROP) || 'null');
+  } catch (e) {
+    state = null;
+  }
+  if (state && state.date === today && Array.isArray(state.hits)) {
+    const list          = getDedupedWatchTickers();
+    const partialSorted = state.hits.slice().sort(function (a, b) { return a.changePct - b.changePct; });
+    const lines = partialSorted.slice(0, 15).map(function (r, i) {
+      return `${String(i + 1).padStart(2)}. ${String(r.ticker).padEnd(6)} ${Number(r.changePct).toFixed(1)}%  $${r.currentPrice}`;
+    });
+    const more = partialSorted.length > 15 ? '\n… and ' + (partialSorted.length - 15) + ' more.' : '';
+    return json({
+      message:
+`⏳ TOP MOVER — scan in progress (${state.i}/${list.length})
+
+Partial matches (${partialSorted.length}):
+
+${lines.join('\n')}${more}
+
+Tap CHECK-TOP-MOVER again for updates.`,
+      results:        partialSorted,
+      date:           today,
+      count:          partialSorted.length,
+      scanInProgress: true,
+      scanComplete:   false,
+      processed:      state.i,
+      total:          list.length
+    });
+  }
+
+  return json({
+    message:
+`⚠️ NO TOP MOVER DATA FOR TODAY (${today})
+
+The daily scan has not completed yet. When the operator runs the market scan on the Tanaka Stock web app, matches appear here in real time.
+
+Anyone can use CHECK-TOP-MOVER (Telegram or web) to follow the list.`,
+    results:        [],
+    date:           null,
+    count:          0,
+    scanInProgress: false,
+    scanComplete:   false
+  });
 }
 
