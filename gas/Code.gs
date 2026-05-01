@@ -232,6 +232,33 @@ function doGet(e) {
   }
 }
 
+/**
+ * Telegram webhook (Vercel) should POST JSON here — avoids long query strings and encoding issues.
+ * Body: { message, chatId, tgUsername, tgId }
+ */
+function doPost(e) {
+  try {
+    var msg = '';
+    var chatId = '';
+    var tgU = '';
+    var tgI = '';
+    if (e.postData && e.postData.contents) {
+      var ctype = String(e.postData.type || '').toLowerCase();
+      if (ctype.indexOf('json') >= 0) {
+        var b = JSON.parse(e.postData.contents);
+        msg    = String(b.message || '').trim();
+        chatId = String(b.chatId || '').trim();
+        tgU    = String(b.tgUsername || '').trim();
+        tgI    = String(b.tgId || '').trim();
+      }
+    }
+    if (msg) return handleMessage(msg, chatId, tgU, tgI);
+    return json({ message: '⚠️ No message in POST body.' });
+  } catch (err) {
+    return json({ message: '⚠️ Server error: ' + err.toString() });
+  }
+}
+
 // ══════════════════════════════════════════════
 //  MESSAGE ROUTER
 // ══════════════════════════════════════════════
