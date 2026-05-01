@@ -15,7 +15,8 @@ const WATCH_TICKERS_FALLBACK = ['SPY', 'QQQ', 'IWM', 'AAPL', 'MSFT', 'NVDA', 'AM
 
 const SCAN_SESSION_PROP = 'market_scan_session_v1';
 /** Tickers processed per HTTP request (web) or per inner step (Telegram multi-step) */
-const SCAN_CHUNK_SIZE = 25;
+/** Keep small so each GAS chunk finishes before Vercel/proxy timeouts (e.g. HTTP 504). */
+const SCAN_CHUNK_SIZE = 10;
 /** Telegram: keep running chunks in one /scan-init until this many ms elapsed */
 const TELEGRAM_SCAN_BUDGET_MS = 270000;
 
@@ -194,6 +195,7 @@ function handleMessage(raw, chatId, tgUsername, tgId) {
   if (cmd === 'REGISTER') return sendRegisterInfo();
   if (cmd === 'EXPLAIN')  return sendExplain(parts[1] || '');
   if (cmd === 'SCAN-INIT' || cmd === 'SCANINIT')         return scanInit(sessionUser || '', chatId);
+  if (cmd === 'SCAN-PROGRESS' || cmd === 'SCANPROGRESS' || cmd === 'SCAN_PROGRESS') return getMarketScanProgress();
   if (cmd === 'CHECK-GOOD-STOCK' || cmd === 'CHECKGOODSTOCK') return checkGoodStock();
   if (cmd === 'GETPROFILE') {
     // Web app calls: GETPROFILE username — returns current profile from sheet
@@ -219,6 +221,7 @@ function handleMessage(raw, chatId, tgUsername, tgId) {
     if (cmd === 'UPDATE')    return promptUpdate();
     if (cmd === 'CHECK')     return runCheck(chatId, tgUsername, tgId, sessionUser);
     if (cmd === 'SCAN-INIT' || cmd === 'SCANINIT') return scanInit(sessionUser, chatId);
+    if (cmd === 'SCAN-PROGRESS' || cmd === 'SCANPROGRESS' || cmd === 'SCAN_PROGRESS') return getMarketScanProgress();
     if (cmd === 'CHECK-GOOD-STOCK' || cmd === 'CHECKGOODSTOCK') return checkGoodStock();
     if (cmd === 'WATCHLIST') return promptWatchlist();
     return sendHelp(chatId);
@@ -1719,6 +1722,59 @@ Use /check-good-stock to see full list.`,
     results:      results,
     date:         today,
     count:        results.length
+  });
+}
+
+/**
+ * Read saved chunk state only (no Yahoo calls). For web resume UI after 504 / tab close.
+ */
+function getMarketScanProgress() {
+  const today = Utilities.formatDate(new Date(), 'Asia/Jakarta', 'yyyy-MM-dd');
+  if (getLastScanDate() === today) {
+    return json({
+      scanInProgress:   false,
+      dayScanFinished:  true,
+      date:             today,
+      processed:        0,
+      total:            0,
+      progress:         1,
+      partialResults:   [],
+      message:          'Market scan already finished for today.'
+    });
+  }
+  const props = PropertiesService.getScriptProperties();
+  var state = null;
+  try {
+    state = JSON.parse(props.getProperty(SCAN_SESSION_PROP) || 'null');
+  } catch (e) {
+    state = null;
+  }
+  if (!state || state.date !== today || !Array.isArray(state.hits)) {
+    return json({
+      scanInProgress:  false,
+      dayScanFinished: false,
+      date:            today,
+      processed:       0,
+      total:           0,
+      progress:        0,
+      partialResults:  [],
+      chunkMatches:    0,
+      message:         'No scan in progress.'
+    });
+  }
+  const list          = getDedupedWatchTickers();
+  const partialSorted = state.hits.slice().sort(function (a, b) { return a.changePct - b.changePct; });
+  const progress      = list.length ? state.i / list.length : 0;
+  return json({
+    scanInProgress:   true,
+    dayScanFinished:  false,
+    date:             today,
+    processed:        state.i,
+    total:            list.length,
+    progress:         progress,
+    partialResults:   partialSorted,
+    chunkMatches:     state.hits.length,
+    status:           'Paused at ' + state.i + ' / ' + list.length + ' tickers — run SCAN-INIT to resume.'
   });
 }
 

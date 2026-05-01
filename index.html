@@ -666,6 +666,51 @@ async function callAPI(msg){
   return data;
 }
 
+/** SCAN-INIT with retries for gateway timeouts (504) and transient errors. */
+async function callScanInitWithRetry() {
+  const maxAttempts = 5;
+  const delaysMs    = [0, 1200, 2500, 4500, 7000];
+  var lastErr;
+  for (var attempt = 0; attempt < maxAttempts; attempt++) {
+    if (delaysMs[attempt]) await new Promise(function (r) { setTimeout(r, delaysMs[attempt]); });
+    try {
+      return await callAPI('SCAN-INIT');
+    } catch (e) {
+      lastErr = e;
+      var msg = String((e && e.message) ? e.message : '');
+      var retryable = /HTTP 50[234]|HTTP 408|HTTP 429|Failed to fetch|NetworkError|Load failed|timeout/i.test(msg);
+      if (!retryable || attempt === maxAttempts - 1) throw e;
+    }
+  }
+  throw lastErr;
+}
+
+async function syncPausedMarketScanFromServer() {
+  try {
+    var p = await callAPI('SCAN-PROGRESS');
+    if (!p.scanInProgress) return null;
+    gsScanLiveProgress = { processed: p.processed || 0, total: p.total || 0, paused: true };
+    gsAllResults = Array.isArray(p.partialResults) ? p.partialResults.slice() : [];
+    gsCurrentPage = 1;
+    updateGsScanProgressBar({
+      scanComplete: false,
+      progress:     p.progress || 0,
+      processed:    p.processed,
+      total:        p.total,
+      status:       p.status || ('Paused at ' + p.processed + ' / ' + p.total)
+    });
+    var wrap = document.getElementById('gs-scan-progress-wrap');
+    if (wrap) {
+      wrap.style.display = 'block';
+      wrap.setAttribute('aria-hidden', 'false');
+    }
+    renderGoodStockTable();
+    return p;
+  } catch (_) {
+    return null;
+  }
+}
+
 async function doLogin(){
   const u=document.getElementById('l-user').value.trim();
   const p=document.getElementById('l-pass').value;
@@ -924,7 +969,7 @@ function addHistory(type,label,result){
 //  GOOD STOCK — scan-init + check-good-stock
 // ═══════════════════════════════════════════
 let gsAllResults = [];
-/** Set to { processed, total } while a market scan is streaming partial results */
+/** { processed, total, paused?: boolean } — paused after timeout/error; cleared when scan completes */
 let gsScanLiveProgress = null;
 let gsCurrentPage = 1;
 const GS_PAGE_SIZE = 20;
@@ -935,7 +980,6 @@ async function loadGoodStock() {
   const btnScan = document.getElementById('btn-scan-init');
   const analyzeArea = document.getElementById('gs-analyze-area');
   if(analyzeArea) analyzeArea.style.display = 'none';
-  gsScanLiveProgress = null;
 
   statusEl.textContent = 'Checking scan status…';
   contentEl.innerHTML = '<div class="pos-empty" style="padding:32px 0;text-align:center;">Loading…</div>';
@@ -947,6 +991,7 @@ async function loadGoodStock() {
 
     if (d.date && d.date === d.date) { // scan ran
       if (d.count > 0) {
+        gsScanLiveProgress = null;
         // Scan already done today — disable button
         statusEl.textContent = '✅ Scan done for ' + (d.date || 'today') + ' — ' + d.count + ' stock(s) found';
         btnScan.disabled = true;
@@ -955,6 +1000,7 @@ async function loadGoodStock() {
         gsCurrentPage = 1;
         renderGoodStockTable();
       } else if (d.results && d.results.length === 0 && d.date) {
+        gsScanLiveProgress = null;
         // Scanned but nothing found
         statusEl.textContent = '✅ Scan done for ' + d.date + ' — No stocks matched today';
         btnScan.disabled = true;
@@ -962,12 +1008,17 @@ async function loadGoodStock() {
         gsAllResults = [];
         contentEl.innerHTML = '<div class="pos-empty" style="padding:32px 0;text-align:center;">No stocks dropped ≥10% with ≥4M avg volume today.</div>';
       } else {
-        // Not scanned yet
+        // Not scanned yet (no sheet row for today)
         statusEl.textContent = 'Not scanned yet today — click button to run';
         btnScan.disabled = false;
         btnScan.textContent = '🔍 Run Market Scan';
         gsAllResults = [];
         contentEl.innerHTML = '<div class="pos-empty" style="padding:32px 0;text-align:center;">No scan data. Click "Run Market Scan" to start.</div>';
+        var pausedA = await syncPausedMarketScanFromServer();
+        if (pausedA) {
+          statusEl.textContent = 'Scan paused at ' + pausedA.processed + '/' + pausedA.total + ' — tap Resume to continue.';
+          btnScan.textContent = '▶ Resume Market Scan';
+        }
       }
     } else {
       // Not scanned yet
@@ -976,6 +1027,11 @@ async function loadGoodStock() {
       btnScan.textContent = '🔍 Run Market Scan';
       gsAllResults = [];
       contentEl.innerHTML = '<div class="pos-empty" style="padding:32px 0;text-align:center;">No scan data. Click "Run Market Scan" to start.</div>';
+      var pausedB = await syncPausedMarketScanFromServer();
+      if (pausedB) {
+        statusEl.textContent = 'Scan paused at ' + pausedB.processed + '/' + pausedB.total + ' — tap Resume to continue.';
+        btnScan.textContent = '▶ Resume Market Scan';
+      }
     }
   } catch(e) {
     statusEl.textContent = '⚠️ Could not load scan status';
@@ -1002,7 +1058,7 @@ function updateGsScanProgressBar(d) {
 function applyGsScanChunkResponse(d) {
   updateGsScanProgressBar(d);
   if (!d || d.scanComplete !== false) return;
-  gsScanLiveProgress = { processed: d.processed || 0, total: d.total || 0 };
+  gsScanLiveProgress = { processed: d.processed || 0, total: d.total || 0, paused: false };
   gsAllResults = Array.isArray(d.partialResults) ? d.partialResults.slice() : [];
   gsCurrentPage = 1;
   renderGoodStockTable();
@@ -1016,17 +1072,45 @@ async function runScanInit() {
   const progressFill = document.getElementById('gs-scan-progress-fill');
   btn.disabled = true;
   btn.textContent = '⏳ Scanning…';
-  statusEl.textContent = 'Starting market scan…';
-  gsScanLiveProgress = null;
-  contentEl.innerHTML = '<div class="pos-empty" style="padding:32px 0;text-align:center;">Running market scan — results will appear below as they are found.</div>';
-  if (progressWrap) {
-    progressWrap.style.display = 'none';
-    progressWrap.setAttribute('aria-hidden', 'true');
+
+  var resuming = false;
+  try {
+    var prog = await callAPI('SCAN-PROGRESS');
+    if (prog.scanInProgress) {
+      resuming = true;
+      gsScanLiveProgress = { processed: prog.processed || 0, total: prog.total || 0, paused: false };
+      gsAllResults = Array.isArray(prog.partialResults) ? prog.partialResults.slice() : [];
+      gsCurrentPage = 1;
+      renderGoodStockTable();
+      statusEl.textContent = 'Resuming market scan…';
+      updateGsScanProgressBar({
+        scanComplete: false,
+        progress:     prog.progress || 0,
+        processed:    prog.processed,
+        total:        prog.total,
+        status:       'Resuming… ' + prog.processed + ' / ' + prog.total
+      });
+      if (progressWrap) {
+        progressWrap.style.display = 'block';
+        progressWrap.setAttribute('aria-hidden', 'false');
+      }
+    }
+  } catch (_) {}
+
+  if (!resuming) {
+    statusEl.textContent = 'Starting market scan…';
+    gsScanLiveProgress = null;
+    contentEl.innerHTML = '<div class="pos-empty" style="padding:32px 0;text-align:center;">Running market scan — results will appear below as they are found.</div>';
+    if (progressWrap) {
+      progressWrap.style.display = 'none';
+      progressWrap.setAttribute('aria-hidden', 'true');
+    }
+    if (progressFill) progressFill.style.width = '0%';
   }
-  if (progressFill) progressFill.style.width = '0%';
+
   let guard = 0;
   try {
-    let d = await callAPI('SCAN-INIT');
+    let d = await callScanInitWithRetry();
     if (d.scanned) {
       if (progressWrap) progressWrap.style.display = 'none';
       gsScanLiveProgress = null;
@@ -1036,8 +1120,8 @@ async function runScanInit() {
       return;
     }
     applyGsScanChunkResponse(d);
-    while (d && d.scanComplete === false && guard++ < 600) {
-      d = await callAPI('SCAN-INIT');
+    while (d && d.scanComplete === false && guard++ < 900) {
+      d = await callScanInitWithRetry();
       applyGsScanChunkResponse(d);
     }
     if (progressWrap) {
@@ -1046,7 +1130,7 @@ async function runScanInit() {
     }
     if (progressFill) progressFill.style.width = '100%';
     if (!d || d.scanComplete !== true) {
-      throw new Error('Scan did not finish. You can tap Run again to resume.');
+      throw new Error('Scan did not finish. Tap the button again to resume.');
     }
     gsScanLiveProgress = null;
     statusEl.textContent = '✅ Scan complete — ' + (d.count || 0) + ' stock(s) found';
@@ -1059,14 +1143,20 @@ async function runScanInit() {
       contentEl.innerHTML = '<div class="pos-empty" style="padding:32px 0;text-align:center;">No stocks matched today&#39;s criteria.</div>';
     }
   } catch(e) {
-    gsScanLiveProgress = null;
-    if (progressWrap) {
+    var paused = await syncPausedMarketScanFromServer();
+    if (progressWrap && paused) {
+      progressWrap.style.display = 'block';
+      progressWrap.setAttribute('aria-hidden', 'false');
+    } else if (progressWrap) {
       progressWrap.style.display = 'none';
       progressWrap.setAttribute('aria-hidden', 'true');
     }
-    statusEl.textContent = '⚠️ Scan failed: ' + e.message;
+    var hint = paused
+      ? ('Progress saved at ' + (paused.processed || 0) + ' / ' + (paused.total || 0) + '. Tap ▶ Resume to continue.')
+      : ('If the scan was running, tap ▶ Resume — the server keeps your place.');
+    statusEl.textContent = '⚠️ ' + e.message + ' — ' + hint;
     btn.disabled = false;
-    btn.textContent = '🔍 Run Market Scan';
+    btn.textContent = '▶ Resume Market Scan';
   }
 }
 
@@ -1080,9 +1170,14 @@ function renderGoodStockTable() {
   let liveBanner = '';
   if (gsScanLiveProgress) {
     const p = gsScanLiveProgress;
+    const paused = p.paused;
+    const title = paused ? 'Paused' : 'Live scan';
+    const extra = paused
+      ? ' Progress is stored on the server. Use <strong>▶ Resume Market Scan</strong> to continue.'
+      : ' (list grows as the scan runs).';
     liveBanner =
-      '<div class="gs-live-banner"><strong>Live scan</strong> — ' + p.processed + ' / ' + p.total +
-      ' tickers checked · <strong>' + total + '</strong> match(es) so far (list grows as the scan runs).</div>';
+      '<div class="gs-live-banner"><strong>' + title + '</strong> — ' + p.processed + ' / ' + p.total +
+      ' tickers checked · <strong>' + total + '</strong> match(es) so far.' + extra + '</div>';
   }
 
   let rows = pageItems.map((r, i) => {
