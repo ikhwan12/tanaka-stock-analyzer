@@ -13,13 +13,33 @@ function telegramApiBase() {
   return `https://api.telegram.org/bot${String(t).trim()}`;
 }
 
+/**
+ * Telegram must call a URL that is NOT behind Vercel Deployment Protection (preview URLs often 401).
+ * Prefer PUBLIC_BASE_URL in env. Only use VERCEL_URL on production deploys.
+ */
+function resolveWebhookBaseUrl() {
+  const explicit = (process.env.PUBLIC_BASE_URL || '').trim().replace(/\/$/, '');
+  if (explicit) return { base: explicit, source: 'PUBLIC_BASE_URL' };
+
+  if (process.env.VERCEL_ENV === 'production' && process.env.VERCEL_URL) {
+    return { base: `https://${process.env.VERCEL_URL}`, source: 'VERCEL_URL (production)' };
+  }
+
+  // Preview / local: never use VERCEL_URL here — it points at a protected preview host → Telegram 401
+  const fallback = 'https://tanaka-stock-analyzer.vercel.app';
+  return {
+    base:     fallback,
+    source:   'default production host',
+    warning:
+      'Webhook uses default production URL. Add PUBLIC_BASE_URL in Vercel if your live site is a custom domain. ' +
+      'If you opened /api/setup from a Preview deployment, the webhook was NOT pointed at that preview (previews often block Telegram with 401).'
+  };
+}
+
 export default async function handler(req, res) {
   try {
     const TG_API = telegramApiBase();
-    const base =
-      (process.env.PUBLIC_BASE_URL || '').replace(/\/$/, '') ||
-      (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : '') ||
-      'https://tanaka-stock-analyzer.vercel.app';
+    const { base, source, warning } = resolveWebhookBaseUrl();
     const WEBHOOK_URL = `${base}/api/telegram`;
 
     // 1. Set webhook
@@ -64,10 +84,14 @@ export default async function handler(req, res) {
     const infoData = await infoResp.json();
 
     res.status(200).json({
-      success:      true,
-      webhook:      whData,
-      commands:     cmdsData,
-      webhook_info: infoData.result
+      success:         true,
+      webhook_url:     WEBHOOK_URL,
+      webhook_base:    base,
+      webhook_source:  source,
+      webhook_warning: warning || null,
+      webhook:         whData,
+      commands:        cmdsData,
+      webhook_info:    infoData.result
     });
 
   } catch (err) {
