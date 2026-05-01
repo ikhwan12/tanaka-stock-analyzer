@@ -150,6 +150,8 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:15
 .gs-progress-row{width:100%;margin-bottom:16px;}
 .gs-scan-progress-track{height:10px;background:var(--surface2);border-radius:6px;overflow:hidden;border:1px solid var(--border);}
 .gs-scan-progress-fill{height:100%;background:linear-gradient(90deg,#a855f7,#c084fc);width:0%;transition:width .25s ease;}
+.gs-live-banner{font-size:13px;color:var(--text2);padding:12px 14px;margin-bottom:14px;border-radius:var(--r);border:1px solid rgba(168,85,247,.35);background:rgba(168,85,247,.08);}
+.gs-live-banner strong{color:#c084fc;font-weight:600;}
 
 /* ── LAYOUT ─────────────────────────────── */
 .body-wrap{
@@ -922,6 +924,8 @@ function addHistory(type,label,result){
 //  GOOD STOCK — scan-init + check-good-stock
 // ═══════════════════════════════════════════
 let gsAllResults = [];
+/** Set to { processed, total } while a market scan is streaming partial results */
+let gsScanLiveProgress = null;
 let gsCurrentPage = 1;
 const GS_PAGE_SIZE = 20;
 
@@ -931,6 +935,7 @@ async function loadGoodStock() {
   const btnScan = document.getElementById('btn-scan-init');
   const analyzeArea = document.getElementById('gs-analyze-area');
   if(analyzeArea) analyzeArea.style.display = 'none';
+  gsScanLiveProgress = null;
 
   statusEl.textContent = 'Checking scan status…';
   contentEl.innerHTML = '<div class="pos-empty" style="padding:32px 0;text-align:center;">Loading…</div>';
@@ -993,6 +998,16 @@ function updateGsScanProgressBar(d) {
   }
 }
 
+/** Progress bar + live table from chunk payload (partialResults). */
+function applyGsScanChunkResponse(d) {
+  updateGsScanProgressBar(d);
+  if (!d || d.scanComplete !== false) return;
+  gsScanLiveProgress = { processed: d.processed || 0, total: d.total || 0 };
+  gsAllResults = Array.isArray(d.partialResults) ? d.partialResults.slice() : [];
+  gsCurrentPage = 1;
+  renderGoodStockTable();
+}
+
 async function runScanInit() {
   const btn = document.getElementById('btn-scan-init');
   const statusEl = document.getElementById('gs-scan-status');
@@ -1002,7 +1017,8 @@ async function runScanInit() {
   btn.disabled = true;
   btn.textContent = '⏳ Scanning…';
   statusEl.textContent = 'Starting market scan…';
-  contentEl.innerHTML = '<div class="pos-empty" style="padding:32px 0;text-align:center;">Running market scan — fetching Yahoo data in batches.</div>';
+  gsScanLiveProgress = null;
+  contentEl.innerHTML = '<div class="pos-empty" style="padding:32px 0;text-align:center;">Running market scan — results will appear below as they are found.</div>';
   if (progressWrap) {
     progressWrap.style.display = 'none';
     progressWrap.setAttribute('aria-hidden', 'true');
@@ -1013,15 +1029,16 @@ async function runScanInit() {
     let d = await callAPI('SCAN-INIT');
     if (d.scanned) {
       if (progressWrap) progressWrap.style.display = 'none';
+      gsScanLiveProgress = null;
       statusEl.textContent = '✅ ' + (d.message.split('\n')[0] || 'Already scanned today');
       btn.textContent = '✅ Already Scanned Today';
       await loadGoodStock();
       return;
     }
-    updateGsScanProgressBar(d);
+    applyGsScanChunkResponse(d);
     while (d && d.scanComplete === false && guard++ < 600) {
       d = await callAPI('SCAN-INIT');
-      updateGsScanProgressBar(d);
+      applyGsScanChunkResponse(d);
     }
     if (progressWrap) {
       progressWrap.style.display = 'none';
@@ -1031,6 +1048,7 @@ async function runScanInit() {
     if (!d || d.scanComplete !== true) {
       throw new Error('Scan did not finish. You can tap Run again to resume.');
     }
+    gsScanLiveProgress = null;
     statusEl.textContent = '✅ Scan complete — ' + (d.count || 0) + ' stock(s) found';
     btn.textContent = '✅ Already Scanned Today';
     gsAllResults = d.results || [];
@@ -1041,6 +1059,7 @@ async function runScanInit() {
       contentEl.innerHTML = '<div class="pos-empty" style="padding:32px 0;text-align:center;">No stocks matched today&#39;s criteria.</div>';
     }
   } catch(e) {
+    gsScanLiveProgress = null;
     if (progressWrap) {
       progressWrap.style.display = 'none';
       progressWrap.setAttribute('aria-hidden', 'true');
@@ -1054,9 +1073,17 @@ async function runScanInit() {
 function renderGoodStockTable() {
   const contentEl = document.getElementById('gs-content');
   const total = gsAllResults.length;
-  const totalPages = Math.ceil(total / GS_PAGE_SIZE);
+  const totalPages = Math.ceil(total / GS_PAGE_SIZE) || 1;
   const start = (gsCurrentPage - 1) * GS_PAGE_SIZE;
   const pageItems = gsAllResults.slice(start, start + GS_PAGE_SIZE);
+
+  let liveBanner = '';
+  if (gsScanLiveProgress) {
+    const p = gsScanLiveProgress;
+    liveBanner =
+      '<div class="gs-live-banner"><strong>Live scan</strong> — ' + p.processed + ' / ' + p.total +
+      ' tickers checked · <strong>' + total + '</strong> match(es) so far (list grows as the scan runs).</div>';
+  }
 
   let rows = pageItems.map((r, i) => {
     const rank = start + i + 1;
@@ -1082,15 +1109,19 @@ function renderGoodStockTable() {
       <button class="gs-page-btn" onclick="changeGsPage(${gsCurrentPage+1})" ${gsCurrentPage===totalPages?'disabled':''}>Next →</button>
     </div>` : `<div class="gs-pagination"><span class="gs-page-info">${total} stock(s) found</span></div>`;
 
-  contentEl.innerHTML = `
-    <table class="gs-table">
+  const emptyRow = !rows.length
+    ? '<tr><td colspan="6" style="text-align:center;color:var(--text3);padding:28px;">No matches yet for this filter — keep scanning…</td></tr>'
+    : '';
+
+  contentEl.innerHTML =
+    liveBanner +
+    `<table class="gs-table">
       <thead><tr>
         <th>#</th><th>Ticker</th><th>Change</th><th>Price</th><th>Signal</th><th>Action</th>
       </tr></thead>
-      <tbody>${rows}</tbody>
+      <tbody>${rows || emptyRow}</tbody>
     </table>
-    ${pagination}
-  `;
+    ${pagination}`;
 }
 
 function changeGsPage(page) {

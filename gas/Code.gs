@@ -1754,13 +1754,15 @@ function runMarketScanChunkObject(today) {
   }
   props.setProperty(SCAN_SESSION_PROP, JSON.stringify(state));
   const progress = list.length ? state.i / list.length : 1;
+  const partialSorted = state.hits.slice().sort(function (a, b) { return a.changePct - b.changePct; });
   return {
-    scanComplete: false,
-    processed:    state.i,
-    total:        list.length,
-    progress:     progress,
-    status:       'Scanning… ' + state.i + ' / ' + list.length + ' tickers',
-    chunkMatches: state.hits.length
+    scanComplete:   false,
+    processed:      state.i,
+    total:          list.length,
+    progress:       progress,
+    status:         'Scanning… ' + state.i + ' / ' + list.length + ' tickers',
+    chunkMatches:   state.hits.length,
+    partialResults: partialSorted
   };
 }
 
@@ -1771,13 +1773,14 @@ function scanInitWebChunk(today) {
     return scanResponseComplete(today, o.results);
   }
   return json({
-    scanned:       false,
-    scanComplete:  false,
-    processed:     o.processed,
-    total:         o.total,
-    progress:      o.progress,
-    status:        o.status,
-    chunkMatches:  o.chunkMatches
+    scanned:         false,
+    scanComplete:    false,
+    processed:       o.processed,
+    total:           o.total,
+    progress:        o.progress,
+    status:          o.status,
+    chunkMatches:    o.chunkMatches,
+    partialResults:  o.partialResults || []
   });
 }
 
@@ -1791,16 +1794,18 @@ function scanInitTelegramFull(today) {
       return scanResponseComplete(today, last.results);
     }
   }
+  const partial = last && last.partialResults ? last.partialResults : [];
   return json({
     message:
       '⏳ Market scan in progress — ' + (last ? last.processed : 0) + ' / ' + (last ? last.total : 0) + ' tickers.\n\nTap /scan-init again to continue.',
-    scanned:       false,
-    scanComplete:  false,
-    processed:     last ? last.processed : 0,
-    total:         last ? last.total : 0,
-    progress:      last ? last.progress : 0,
-    status:        last ? last.status : '',
-    chunkMatches:  last ? last.chunkMatches : 0
+    scanned:         false,
+    scanComplete:    false,
+    processed:       last ? last.processed : 0,
+    total:           last ? last.total : 0,
+    progress:        last ? last.progress : 0,
+    status:          last ? last.status : '',
+    chunkMatches:    last ? last.chunkMatches : 0,
+    partialResults:  partial
   });
 }
 
