@@ -446,14 +446,18 @@ function runCheck(chatId, tgUsername, tgId, webUsername) {
   const isTelegram = !!chatId;
   if (!session) {
     if (isTelegram) {
-      const usageResult = checkAndIncrementUsage(tgUsername, tgId || chatId, chatId);
-      if (!usageResult.allowed) {
-        return json({ message: '⏰ FREE LIMIT REACHED\n\nYou\'ve used all 5 free analyses.\n\nTap /register for full access.\nContact @ikhwantan — IDR 49,000 one-time.' });
-      }
-    } else {
-      if (!webUsername || !isValidUser(webUsername)) {
-        return json({ message: '🔒 You are not logged in. Please login first.' });
-      }
+      // /check without LOGIN used to call portfolio('') which merged ALL users' rows and timed out
+      return json({ message:
+`🔒 LOGIN REQUIRED
+
+To view your portfolio:
+LOGIN username password
+
+Example:
+LOGIN tanaka00 yourpassword` });
+    }
+    if (!webUsername || !isValidUser(webUsername)) {
+      return json({ message: '🔒 You are not logged in. Please login first.' });
     }
   }
   // hideClose: always hide closed/sold positions in /check (both Telegram and web)
@@ -952,6 +956,8 @@ Date:   ${date}` });
 }
 
 function getUserHoldings(username) {
+  const u = String(username || '').trim();
+  if (!u) return {};
   SpreadsheetApp.flush(); // Ensure all pending writes are committed before reading
   const ss    = SpreadsheetApp.openById(getSpreadsheetId_());
   const sheet = ss.getSheetByName('transactions');
@@ -967,7 +973,7 @@ function getUserHoldings(username) {
 
   rows.slice(1).forEach(r => {
     const rowUser = uIdx >= 0 ? String(r[uIdx]).trim() : 'tanaka00';
-    if (username && rowUser !== username) return;
+    if (rowUser.toLowerCase() !== u.toLowerCase()) return;
     const ticker = String(r[tIdx]).trim();
     const type   = String(r[typeIdx]).trim();
     const amount = +r[aIdx];
@@ -1173,28 +1179,37 @@ function watchlistScan(username) {
 //  SET BOT COMMANDS — run once manually in GAS
 // ══════════════════════════════════════════════
 function setTelegramCommands() {
+  // Descriptions: plain ASCII, no em dashes (Telegram setMyCommands can reject some Unicode)
   const commands = [
-    { command: 'register',  description: '🌟 Get Full Access — Support this project' },
-    { command: 'start',     description: 'Welcome & login status' },
+    { command: 'register',  description: 'Get full access - support this project' },
+    { command: 'start',     description: 'Welcome and login status' },
     { command: 'help',      description: 'Show all commands' },
-    { command: 'login',     description: 'Sign in — LOGIN username password' },
+    { command: 'login',     description: 'Sign in: LOGIN user pass' },
     { command: 'logout',    description: 'Sign out' },
-    { command: 'buy',       description: 'Check buy signal — BUY TICKER AMOUNT' },
-    { command: 'sell',      description: 'Check sell signal — SELL TICKER AMOUNT' },
-    { command: 'update',    description: 'Record a trade — UPDATE TICKER B100 185.20' },
-    { command: 'check',     description: 'View portfolio & P&L' },
-    { command: 'watchlist', description: 'Manage & scan watchlist' },
-    { command: 'profile',   description: 'Set risk level — LOW / MEDIUM / HIGH' },
-    { command: 'explain',   description: 'Understand results — EXPLAIN BUY or SELL' },
-    { command: 'balance',   description: 'Set initial balance — BALANCE 1000' },
-    { command: 'clear',     description: 'Reset portfolio — CLEAR YES' },
-    { command: 'check_top_mover', description: 'Top movers — live during daily scan' }
+    { command: 'buy',       description: 'Buy signal: BUY TICKER AMOUNT' },
+    { command: 'sell',      description: 'Sell signal: SELL TICKER AMOUNT' },
+    { command: 'update',    description: 'Record trade: UPDATE TICKER B100 185.20' },
+    { command: 'check',     description: 'Portfolio and P and L (login first)' },
+    { command: 'watchlist', description: 'Manage and scan watchlist' },
+    { command: 'profile',   description: 'Risk: PROFILE LOW MEDIUM HIGH' },
+    { command: 'explain',   description: 'EXPLAIN BUY or SELL' },
+    { command: 'balance',   description: 'Set balance: BALANCE 1000' },
+    { command: 'clear',     description: 'Reset portfolio: CLEAR YES' },
+    { command: 'check_top_mover', description: 'Top movers from daily scan' }
   ];
   const resp = UrlFetchApp.fetch(
     'https://api.telegram.org/bot' + getBotToken_() + '/setMyCommands',
-    { method: 'POST', contentType: 'application/json', payload: JSON.stringify({ commands }) }
+    {
+      method:            'post',
+      contentType:       'application/json',
+      muteHttpExceptions: true,
+      payload:           JSON.stringify({ commands })
+    }
   );
-  Logger.log(resp.getContentText());
+  const code = resp.getResponseCode();
+  const body = resp.getContentText();
+  Logger.log('setMyCommands HTTP ' + code + ' ' + body);
+  if (code !== 200) throw new Error('setMyCommands failed: ' + code + ' ' + body);
 }
 
 

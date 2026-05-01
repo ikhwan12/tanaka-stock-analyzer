@@ -39,21 +39,21 @@ export default async function handler(req, res) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         commands: [
-          { command: 'register',  description: '🌟 Get Full Access — Support this project' },
+          { command: 'register',  description: 'Get full access - support this project' },
           { command: 'start',     description: 'Welcome and login status' },
           { command: 'help',      description: 'Show all commands' },
-          { command: 'login',     description: 'Sign in — LOGIN username password' },
+          { command: 'login',     description: 'Sign in: LOGIN user pass' },
           { command: 'logout',    description: 'Sign out' },
-          { command: 'buy',       description: 'Check buy signal — BUY TICKER AMOUNT' },
-          { command: 'sell',      description: 'Check sell signal — SELL TICKER AMOUNT' },
-          { command: 'update',    description: 'Record a trade — UPDATE TICKER B100 185.20' },
-          { command: 'check',     description: 'View portfolio and P&L' },
+          { command: 'buy',       description: 'Buy signal: BUY TICKER AMOUNT' },
+          { command: 'sell',      description: 'Sell signal: SELL TICKER AMOUNT' },
+          { command: 'update',    description: 'Record trade: UPDATE TICKER B100 185.20' },
+          { command: 'check',     description: 'Portfolio and P and L (login first)' },
           { command: 'watchlist', description: 'Manage and scan watchlist' },
-          { command: 'profile',   description: 'Set risk level — LOW / MEDIUM / HIGH' },
-          { command: 'explain',   description: 'Understand results — EXPLAIN BUY or SELL' },
-          { command: 'balance',   description: 'Set initial balance — BALANCE 1000' },
-          { command: 'clear',     description: 'Reset portfolio — CLEAR YES' },
-          { command: 'check_top_mover', description: 'Top movers — live during daily scan' }
+          { command: 'profile',   description: 'Risk: PROFILE LOW MEDIUM HIGH' },
+          { command: 'explain',   description: 'EXPLAIN BUY or SELL' },
+          { command: 'balance',   description: 'Set balance: BALANCE 1000' },
+          { command: 'clear',     description: 'Reset portfolio: CLEAR YES' },
+          { command: 'check_top_mover', description: 'Top movers from daily scan' }
         ]
       })
     });

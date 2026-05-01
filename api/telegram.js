@@ -67,10 +67,17 @@ export default async function handler(req, res) {
         console.error('GAS non-JSON body:', rawBody.slice(0, 500));
       }
 
-      if (gasResp.ok && data && typeof data.message === 'string' && data.message.length) {
-        replyText = data.message;
-      } else if (gasResp.ok && data && data.message == null) {
-        replyText = '⚠️ Empty reply from server. Try again or use the web app.';
+      const gasMsg =
+        data && data.message != null && String(data.message).trim()
+          ? String(data.message)
+          : null;
+      if (gasResp.ok && gasMsg) {
+        replyText = gasMsg;
+      } else if (gasResp.ok && data && !gasMsg) {
+        replyText =
+          (data.error && String(data.error)) ||
+          (data.success === false && data.message != null ? String(data.message) : null) ||
+          '⚠️ Empty reply from server. Try again or use the web app.';
         console.error('GAS JSON missing message:', JSON.stringify(data).slice(0, 400));
       } else if (!gasResp.ok) {
         replyText = `⚠️ Server error (${gasResp.status}). Please try again.`;
