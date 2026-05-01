@@ -976,6 +976,22 @@ let gsScanLiveProgress = null;
 let gsCurrentPage = 1;
 const GS_PAGE_SIZE = 20;
 
+/** From API: `date` column in sheet / scan session + optional live-cache refresh time */
+function topMoverLastUpdatedLine(d) {
+  if (!d) return '';
+  var parts = [];
+  var scanDate = d.lastUpdatedDate || d.date;
+  if (scanDate) parts.push('Scan data: ' + scanDate);
+  if (d.cacheUpdatedAtIso) {
+    try {
+      var t = new Date(d.cacheUpdatedAtIso);
+      if (!isNaN(t.getTime())) parts.push('Live cache: ' + t.toLocaleString(undefined, { dateStyle: 'short', timeStyle: 'short' }));
+    } catch (_) {}
+  }
+  if (d.isStaleScan) parts.push('Latest sheet scan is not today (Asia/Jakarta)');
+  return parts.join(' · ');
+}
+
 async function loadGoodStock() {
   const statusEl = document.getElementById('gs-scan-status');
   const contentEl = document.getElementById('gs-content');
@@ -1004,7 +1020,7 @@ async function loadGoodStock() {
       if (progFill && d.total) {
         progFill.style.width = Math.min(100, Math.round((d.processed / d.total) * 100)) + '%';
       }
-      statusEl.textContent = '⏳ Scan in progress — ' + (d.processed || 0) + '/' + (d.total || 0) + ' tickers · ' + gsAllResults.length + ' match(es)';
+      statusEl.textContent = '⏳ Scan in progress — ' + (d.processed || 0) + '/' + (d.total || 0) + ' tickers · ' + gsAllResults.length + ' match(es) · ' + topMoverLastUpdatedLine(d);
       if (isOperator) {
         btnScan.disabled = false;
         btnScan.textContent = '▶ Resume Market Scan';
@@ -1018,7 +1034,7 @@ async function loadGoodStock() {
 
     if (d.date && d.scanComplete !== false && (d.count > 0 || (d.results && d.results.length > 0))) {
       gsScanLiveProgress = null;
-      statusEl.textContent = '✅ Scan done for ' + (d.date || 'today') + ' — ' + (d.count || 0) + ' stock(s) found';
+      statusEl.textContent = '✅ ' + (d.count || 0) + ' top mover(s) loaded · ' + topMoverLastUpdatedLine(d);
       btnScan.disabled = true;
       btnScan.textContent = isOperator ? '✅ Already Scanned Today' : 'Scan: operator only';
       gsAllResults = d.results || [];
@@ -1029,7 +1045,7 @@ async function loadGoodStock() {
 
     if (d.date && d.scanComplete !== false && (!d.count || d.count === 0)) {
       gsScanLiveProgress = null;
-      statusEl.textContent = '✅ Scan done for ' + d.date + ' — No stocks matched today';
+      statusEl.textContent = '✅ No matches for this scan · ' + topMoverLastUpdatedLine(d);
       btnScan.disabled = true;
       btnScan.textContent = isOperator ? '✅ Already Scanned Today' : 'Scan: operator only';
       gsAllResults = [];
@@ -1038,9 +1054,9 @@ async function loadGoodStock() {
     }
 
     gsScanLiveProgress = null;
-    statusEl.textContent = isOperator
+    statusEl.textContent = (isOperator
       ? 'Not scanned yet today — click the button to run'
-      : 'No scan yet today — results will appear here when the operator runs the scan';
+      : 'No scan yet today — results will appear here when the operator runs the scan') + (d && (d.lastUpdatedDate || d.date) ? ' · ' + topMoverLastUpdatedLine(d) : '');
     btnScan.disabled = !isOperator;
     btnScan.textContent = isOperator ? '🔍 Run Market Scan' : 'Scan: operator only';
     gsAllResults = [];

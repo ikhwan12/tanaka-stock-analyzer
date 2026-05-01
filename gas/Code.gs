@@ -1184,7 +1184,7 @@ function setTelegramCommands() {
     { command: 'explain',   description: 'Understand results — EXPLAIN BUY or SELL' },
     { command: 'balance',   description: 'Set initial balance — BALANCE 1000' },
     { command: 'clear',     description: 'Reset portfolio — CLEAR YES' },
-    { command: 'check-top-mover', description: 'Top movers — live during daily scan' }
+    { command: 'check_top_mover', description: 'Top movers — live during daily scan' }
   ];
   const resp = UrlFetchApp.fetch(
     'https://api.telegram.org/bot' + getBotToken_() + '/setMyCommands',
@@ -1764,11 +1764,12 @@ Date: ${today}
 No stocks found with price > $${TOP_MOVER_MIN_PRICE_USD}, ≥4M avg volume, and dropped ≥10% today.
 
 Market may be stable today. Try again tomorrow.`,
-      scanned:      false,
-      scanComplete: true,
-      results:      [],
-      date:         today,
-      count:        0
+      scanned:         false,
+      scanComplete:    true,
+      results:         [],
+      date:            today,
+      lastUpdatedDate: today,
+      count:           0
     });
   }
   const lines = results.slice(0, 10).map(function (r) {
@@ -1785,11 +1786,12 @@ Found: ${results.length} stocks (price > $${TOP_MOVER_MIN_PRICE_USD}, dropped �
 ${lines.join('\n')}
 
 Use CHECK-TOP-MOVER to see the full list.`,
-    scanned:      false,
-    scanComplete: true,
-    results:      results,
-    date:         today,
-    count:        results.length
+    scanned:         false,
+    scanComplete:    true,
+    results:         results,
+    date:            today,
+    lastUpdatedDate: today,
+    count:           results.length
   });
 }
 
@@ -1848,6 +1850,7 @@ function getMarketScanProgress() {
 
 function persistTopMoverLiveCache_(today, payload) {
   try {
+    payload.updatedAtIso = new Date().toISOString();
     CacheService.getScriptCache().put(
       TOP_MOVER_LIVE_CACHE_KEY + today,
       JSON.stringify(payload),
@@ -1864,6 +1867,90 @@ function readTopMoverLiveCache_(today) {
   } catch (e) {
     return null;
   }
+}
+
+/** Latest YYYY-MM-DD in column A of scan_results (ignores bad cells). */
+function getLatestScanDateFromResultsSheet_() {
+  const sheet = getScanResultsSheet();
+  if (sheet.getLastRow() <= 1) return '';
+  const rows = sheet.getDataRange().getValues().slice(1);
+  var maxD = '';
+  for (var i = 0; i < rows.length; i++) {
+    const d = String(rows[i][0] || '').trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(d) && d > maxD) maxD = d;
+  }
+  return maxD;
+}
+
+/** Rows from scan_results for one scan date (same rows as stored; no extra price filter). */
+function getScanResultsForDate_(scanDateStr) {
+  const sheet = getScanResultsSheet();
+  if (sheet.getLastRow() <= 1) return [];
+  const rows = sheet.getDataRange().getValues().slice(1);
+  const out = [];
+  for (var i = 0; i < rows.length; i++) {
+    const r = rows[i];
+    const dateStr = String(r[0] || '').trim();
+    if (dateStr !== scanDateStr) continue;
+    const ticker = String(r[1] || '').trim();
+    if (!ticker) continue;
+    out.push({
+      date:         dateStr,
+      ticker:       ticker,
+      changePct:    +r[2],
+      currentPrice: +r[3],
+      avgVolume:    +r[4]
+    });
+  }
+  out.sort(function (a, b) { return a.changePct - b.changePct; });
+  return out;
+}
+
+function jsonTopMoverComplete_(scanDateStr, results, todayJakarta, extra) {
+  extra = extra || {};
+  const n = results.length;
+  if (n === 0) {
+    return json(Object.assign({
+      message:
+`📊 TOP MOVER — ${scanDateStr}
+
+No stocks matched the criteria for this scan (price > $${TOP_MOVER_MIN_PRICE_USD}, ≥4M avg volume, dropped ≥10%).`,
+      results:           [],
+      date:              scanDateStr,
+      lastUpdatedDate:   scanDateStr,
+      cacheUpdatedAtIso: extra.cacheUpdatedAtIso || null,
+      count:             0,
+      scanComplete:      true,
+      scanInProgress:    false,
+      isStaleScan:       scanDateStr !== todayJakarta
+    }, extra));
+  }
+  const lines = results.map(function (r, i) {
+    return `${String(i + 1).padStart(2)}. ${r.ticker.padEnd(6)} ${r.changePct.toFixed(1)}%  $${r.currentPrice}`;
+  });
+  var staleNote = scanDateStr !== todayJakarta
+    ? `\n\n📌 Latest saved scan is for ${scanDateStr} (today in scan timezone: ${todayJakarta}).`
+    : '';
+  return json(Object.assign({
+    message:
+`🔍 TOP MOVER — ${scanDateStr}
+
+Stocks with price > $${TOP_MOVER_MIN_PRICE_USD}, ≥4M avg volume, dropped ≥10% (scan date ${scanDateStr}; sorted most negative first):
+
+${lines.join('\n')}
+
+Total: ${n} stocks
+
+Use BUY TICKER AMOUNT to analyze any of these.${staleNote}`,
+    results:           results,
+    date:              scanDateStr,
+    lastUpdatedDate:   scanDateStr,
+    cacheUpdatedAtIso: extra.cacheUpdatedAtIso || null,
+    count:             n,
+    scanComplete:      true,
+    scanInProgress:    false,
+    isStaleScan:       scanDateStr !== todayJakarta
+  }, extra));
 }
 
 /**
@@ -1975,79 +2062,20 @@ Tap CHECK-TOP-MOVER to see the results.`,
 
 function checkTopMover() {
   const today    = Utilities.formatDate(new Date(), 'Asia/Jakarta', 'yyyy-MM-dd');
-  const lastDate = getLastScanDate();
+  const lastMeta = getLastScanDate();
 
-  if (lastDate === today) {
-    const sheet = getScanResultsSheet();
-    if (sheet.getLastRow() <= 1) {
+  // 1) Script cache first (today’s scan session — partial or finished snapshot)
+  const cached = readTopMoverLiveCache_(today);
+  if (cached && String(cached.date || '').trim() === today) {
+    if (cached.scanInProgress && !cached.scanComplete) {
+      const partial = cached.partialResults || [];
+      const n       = partial.length;
+      const lines   = partial.slice(0, 15).map(function (r, i) {
+        return `${String(i + 1).padStart(2)}. ${String(r.ticker).padEnd(6)} ${Number(r.changePct).toFixed(1)}%  $${r.currentPrice}`;
+      });
+      const more = n > 15 ? '\n… and ' + (n - 15) + ' more (see web Top Mover tab for full table).' : '';
       return json({
         message:
-`📊 TOP MOVER — ${today}
-
-Today's scan found no stocks matching the criteria.`,
-        results:        [],
-        date:           today,
-        count:          0,
-        scanComplete:   true,
-        scanInProgress: false
-      });
-    }
-
-    const rows    = sheet.getDataRange().getValues().slice(1);
-    const results = rows.map(r => ({
-      date:         String(r[0]),
-      ticker:       String(r[1]),
-      changePct:    +r[2],
-      currentPrice: +r[3],
-      avgVolume:    +r[4]
-    })).filter(r => r.ticker && r.date === today && r.currentPrice > TOP_MOVER_MIN_PRICE_USD);
-
-    if (!results.length) {
-      return json({
-        message:        `⚠️ No stored rows for today (${today}).`,
-        results:        [],
-        date:           today,
-        count:          0,
-        scanComplete:   true,
-        scanInProgress: false
-      });
-    }
-
-    results.sort(function (a, b) { return a.changePct - b.changePct; });
-    const lines = results.map((r, i) =>
-      `${String(i + 1).padStart(2)}. ${r.ticker.padEnd(6)} ${r.changePct.toFixed(1)}%  $${r.currentPrice}`
-    );
-
-    return json({
-      message:
-`🔍 TOP MOVER — ${today}
-
-Stocks with price > $${TOP_MOVER_MIN_PRICE_USD}, ≥4M avg volume, dropped ≥10% today:
-(Sorted most negative first)
-
-${lines.join('\n')}
-
-Total: ${results.length} stocks
-
-Use BUY TICKER AMOUNT to analyze any of these.`,
-      results:        results,
-      date:           today,
-      count:          results.length,
-      scanComplete:   true,
-      scanInProgress: false
-    });
-  }
-
-  const cached = readTopMoverLiveCache_(today);
-  if (cached && cached.scanInProgress && !cached.scanComplete) {
-    const partial = cached.partialResults || [];
-    const n       = partial.length;
-    const lines   = partial.slice(0, 15).map(function (r, i) {
-      return `${String(i + 1).padStart(2)}. ${String(r.ticker).padEnd(6)} ${Number(r.changePct).toFixed(1)}%  $${r.currentPrice}`;
-    });
-    const more = n > 15 ? '\n… and ' + (n - 15) + ' more (see web Top Mover tab for full table).' : '';
-    return json({
-      message:
 `⏳ TOP MOVER — scan in progress (${cached.processed}/${cached.total})
 
 Partial matches so far (${n}):
@@ -2055,16 +2083,61 @@ Partial matches so far (${n}):
 ${lines.join('\n')}${more}
 
 Tap CHECK-TOP-MOVER again for updates.`,
-      results:        partial,
-      date:           today,
-      count:          n,
-      scanInProgress: true,
-      scanComplete:   false,
-      processed:      cached.processed,
-      total:          cached.total
-    });
+        results:           partial,
+        date:              today,
+        lastUpdatedDate:   today,
+        cacheUpdatedAtIso: cached.updatedAtIso || null,
+        count:             n,
+        scanInProgress:    true,
+        scanComplete:      false,
+        processed:         cached.processed,
+        total:             cached.total,
+        isStaleScan:       false
+      });
+    }
+    if (cached.scanComplete) {
+      const list = (cached.results && cached.results.length)
+        ? cached.results
+        : (cached.partialResults || []);
+      return jsonTopMoverComplete_(today, list, today, { cacheUpdatedAtIso: cached.updatedAtIso || null });
+    }
   }
 
+  // 2) Sheet when meta says today (prefer rows whose date column is today)
+  if (lastMeta === today) {
+    const sh = getScanResultsSheet();
+    if (sh.getLastRow() <= 1) {
+      return json({
+        message:
+`📊 TOP MOVER — ${today}
+
+Today's scan found no stocks matching the criteria.`,
+        results:          [],
+        date:             today,
+        lastUpdatedDate:  today,
+        count:            0,
+        scanComplete:     true,
+        scanInProgress:   false,
+        isStaleScan:      false
+      });
+    }
+    const resultsToday = getScanResultsForDate_(today);
+    if (resultsToday.length > 0) {
+      return jsonTopMoverComplete_(today, resultsToday, today, { source: 'sheet' });
+    }
+  }
+
+  // 3) Fallback: latest date in scan_results (fixes empty/wrong scan_meta)
+  const latestSheet = getLatestScanDateFromResultsSheet_();
+  if (latestSheet) {
+    const results = getScanResultsForDate_(latestSheet);
+    if (latestSheet === today && lastMeta !== today) {
+      try { setLastScanDate(today); } catch (e) {}
+    }
+    return jsonTopMoverComplete_(latestSheet, results, today, { source: 'sheet' });
+  }
+
+  // 4) In-progress session without cache hit (e.g. cache expired)
   const props = PropertiesService.getScriptProperties();
   var state = null;
   try {
@@ -2088,28 +2161,32 @@ Partial matches (${partialSorted.length}):
 ${lines.join('\n')}${more}
 
 Tap CHECK-TOP-MOVER again for updates.`,
-      results:        partialSorted,
-      date:           today,
-      count:          partialSorted.length,
-      scanInProgress: true,
-      scanComplete:   false,
-      processed:      state.i,
-      total:          list.length
+      results:         partialSorted,
+      date:            today,
+      lastUpdatedDate: today,
+      count:           partialSorted.length,
+      scanInProgress:  true,
+      scanComplete:    false,
+      processed:       state.i,
+      total:           list.length,
+      isStaleScan:     false
     });
   }
 
   return json({
     message:
-`⚠️ NO TOP MOVER DATA FOR TODAY (${today})
+`⚠️ NO TOP MOVER DATA FOR ${today}
 
-The daily scan has not completed yet. When the operator runs the market scan on the Tanaka Stock web app, matches appear here in real time.
+No rows in scan_results yet. When the operator runs the market scan on the web app, matches appear here (cache + sheet).
 
-Anyone can use CHECK-TOP-MOVER (Telegram or web) to follow the list.`,
-    results:        [],
-    date:           null,
-    count:          0,
-    scanInProgress: false,
-    scanComplete:   false
+Anyone can use CHECK-TOP-MOVER to follow the list.`,
+    results:          [],
+    date:             null,
+    lastUpdatedDate:  null,
+    count:            0,
+    scanInProgress:   false,
+    scanComplete:     false,
+    isStaleScan:      false
   });
 }
 

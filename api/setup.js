@@ -53,7 +53,7 @@ export default async function handler(req, res) {
           { command: 'explain',   description: 'Understand results — EXPLAIN BUY or SELL' },
           { command: 'balance',   description: 'Set initial balance — BALANCE 1000' },
           { command: 'clear',     description: 'Reset portfolio — CLEAR YES' },
-          { command: 'check-top-mover', description: 'Top movers — live during daily scan' }
+          { command: 'check_top_mover', description: 'Top movers — live during daily scan' }
         ]
       })
     });
