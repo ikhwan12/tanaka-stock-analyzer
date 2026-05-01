@@ -147,6 +147,9 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:15
 .gs-page-info{font-size:13px;color:var(--text3);}
 .gs-scan-bar{display:flex;align-items:center;gap:14px;margin-bottom:18px;flex-wrap:wrap;}
 .gs-scan-status{font-size:13px;color:var(--text3);}
+.gs-progress-row{width:100%;margin-bottom:16px;}
+.gs-scan-progress-track{height:10px;background:var(--surface2);border-radius:6px;overflow:hidden;border:1px solid var(--border);}
+.gs-scan-progress-fill{height:100%;background:linear-gradient(90deg,#a855f7,#c084fc);width:0%;transition:width .25s ease;}
 
 /* ── LAYOUT ─────────────────────────────── */
 .body-wrap{
@@ -527,6 +530,11 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:15
             <button class="btn" id="btn-scan-init" onclick="runScanInit()"
                     style="background:#a855f7;border-color:#a855f7;">🔍 Run Market Scan</button>
             <span class="gs-scan-status" id="gs-scan-status">Checking scan status…</span>
+          </div>
+          <div class="gs-progress-row" id="gs-scan-progress-wrap" style="display:none;" aria-hidden="true">
+            <div class="gs-scan-progress-track">
+              <div class="gs-scan-progress-fill" id="gs-scan-progress-fill"></div>
+            </div>
           </div>
           <div id="gs-content">
             <div class="pos-empty" style="padding:32px 0;text-align:center;">
@@ -971,32 +979,72 @@ async function loadGoodStock() {
   }
 }
 
+function updateGsScanProgressBar(d) {
+  const wrap = document.getElementById('gs-scan-progress-wrap');
+  const fill = document.getElementById('gs-scan-progress-fill');
+  const statusEl = document.getElementById('gs-scan-status');
+  if (!wrap || !fill) return;
+  if (d && d.scanComplete === false) {
+    wrap.style.display = 'block';
+    wrap.setAttribute('aria-hidden', 'false');
+    const pct = Math.min(100, Math.round((d.progress || 0) * 100));
+    fill.style.width = pct + '%';
+    statusEl.textContent = d.status || ('Scanning… ' + (d.processed || 0) + ' / ' + (d.total || 0));
+  }
+}
+
 async function runScanInit() {
   const btn = document.getElementById('btn-scan-init');
   const statusEl = document.getElementById('gs-scan-status');
   const contentEl = document.getElementById('gs-content');
+  const progressWrap = document.getElementById('gs-scan-progress-wrap');
+  const progressFill = document.getElementById('gs-scan-progress-fill');
   btn.disabled = true;
-  btn.textContent = '⏳ Scanning… (may take ~30s)';
-  statusEl.textContent = 'Fetching 90 high-volume stocks…';
-  contentEl.innerHTML = '<div class="pos-empty" style="padding:32px 0;text-align:center;">Running market scan — please wait…</div>';
+  btn.textContent = '⏳ Scanning…';
+  statusEl.textContent = 'Starting market scan…';
+  contentEl.innerHTML = '<div class="pos-empty" style="padding:32px 0;text-align:center;">Running market scan — fetching Yahoo data in batches.</div>';
+  if (progressWrap) {
+    progressWrap.style.display = 'none';
+    progressWrap.setAttribute('aria-hidden', 'true');
+  }
+  if (progressFill) progressFill.style.width = '0%';
+  let guard = 0;
   try {
-    const d = await callAPI('SCAN-INIT');
+    let d = await callAPI('SCAN-INIT');
     if (d.scanned) {
-      // Already done today
+      if (progressWrap) progressWrap.style.display = 'none';
       statusEl.textContent = '✅ ' + (d.message.split('\n')[0] || 'Already scanned today');
       btn.textContent = '✅ Already Scanned Today';
+      await loadGoodStock();
+      return;
+    }
+    updateGsScanProgressBar(d);
+    while (d && d.scanComplete === false && guard++ < 100) {
+      d = await callAPI('SCAN-INIT');
+      updateGsScanProgressBar(d);
+    }
+    if (progressWrap) {
+      progressWrap.style.display = 'none';
+      progressWrap.setAttribute('aria-hidden', 'true');
+    }
+    if (progressFill) progressFill.style.width = '100%';
+    if (!d || d.scanComplete !== true) {
+      throw new Error('Scan did not finish. You can tap Run again to resume.');
+    }
+    statusEl.textContent = '✅ Scan complete — ' + (d.count || 0) + ' stock(s) found';
+    btn.textContent = '✅ Already Scanned Today';
+    gsAllResults = d.results || [];
+    gsCurrentPage = 1;
+    if (gsAllResults.length > 0) {
+      renderGoodStockTable();
     } else {
-      statusEl.textContent = '✅ Scan complete — ' + (d.count || 0) + ' stock(s) found';
-      btn.textContent = '✅ Already Scanned Today';
-      gsAllResults = d.results || [];
-      gsCurrentPage = 1;
-      if (gsAllResults.length > 0) {
-        renderGoodStockTable();
-      } else {
-        contentEl.innerHTML = '<div class="pos-empty" style="padding:32px 0;text-align:center;">No stocks matched today&#39;s criteria.</div>';
-      }
+      contentEl.innerHTML = '<div class="pos-empty" style="padding:32px 0;text-align:center;">No stocks matched today&#39;s criteria.</div>';
     }
   } catch(e) {
+    if (progressWrap) {
+      progressWrap.style.display = 'none';
+      progressWrap.setAttribute('aria-hidden', 'true');
+    }
     statusEl.textContent = '⚠️ Scan failed: ' + e.message;
     btn.disabled = false;
     btn.textContent = '🔍 Run Market Scan';

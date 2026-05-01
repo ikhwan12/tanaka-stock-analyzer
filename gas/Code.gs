@@ -5,6 +5,41 @@
 const SPREADSHEET_ID = '1VqEPNEgGlhCQqO-g7yNwwFeiRi2JuzwM-758JgTw2Fg';
 const BOT_TOKEN      = '8777002152:AAGlHUUQ2C5b1MoAUhRzPZMLUTvYYC5Q4lg';
 
+// Curated universe for Good Stock market scan (deduped at runtime). Duplicates (e.g. TSLA, NIO) appear once.
+const WATCH_TICKERS = [
+  // Mega Cap Tech
+  'AAPL', 'MSFT', 'NVDA', 'AMZN', 'GOOGL', 'META', 'TSLA', 'NFLX',
+  'AMD', 'INTC', 'AVGO', 'QCOM', 'TXN', 'ADBE', 'CRM', 'ORCL', 'CSCO', 'IBM',
+  // AI / Growth
+  'PLTR', 'SNOW', 'DDOG', 'NET', 'ZS', 'MDB', 'AI', 'C3AI', 'PATH', 'U',
+  // Finance
+  'JPM', 'BAC', 'WFC', 'C', 'GS', 'MS', 'AXP', 'SCHW', 'BLK',
+  // Fintech
+  'PYPL', 'SQ', 'COIN', 'HOOD', 'SOFI', 'AFRM', 'UPST',
+  // Retail / Consumer
+  'WMT', 'COST', 'TGT', 'HD', 'LOW', 'NKE', 'SBUX', 'MCD', 'PEP', 'KO',
+  // Communication
+  'DIS', 'CMCSA', 'T', 'VZ', 'TMUS', 'ROKU',
+  // Energy
+  'XOM', 'CVX', 'COP', 'OXY', 'SLB', 'HAL',
+  // Healthcare
+  'JNJ', 'PFE', 'MRNA', 'LLY', 'UNH', 'CVS', 'ABT', 'TMO', 'DHR', 'GILD', 'REGN',
+  // Industrials
+  'BA', 'RTX', 'LMT', 'NOC', 'GD', 'CAT', 'DE', 'GE', 'HON', 'MMM', 'UPS', 'FDX',
+  // Auto / EV
+  'F', 'GM', 'RIVN', 'LCID', 'NIO',
+  // Travel / Platform
+  'UBER', 'LYFT', 'ABNB', 'BKNG', 'EXPE',
+  // China ADRs
+  'BABA', 'JD', 'PDD', 'LI', 'XPEV',
+  // ETFs
+  'SPY', 'QQQ', 'IWM', 'DIA', 'ARKK',
+  'XLF', 'XLE', 'XLK', 'XLV', 'XLI', 'XLY', 'XLP', 'XLU', 'XLB', 'XLRE'
+];
+
+const SCAN_SESSION_PROP = 'market_scan_session_v1';
+const SCAN_CHUNK_SIZE   = 12;
+
 // ── Risk Profile Thresholds ───────────────────
 const PROFILES = {
   LOW:    { zBuy: -2.0, rBuy: 25, zSell: 2.0, rSell: 75, label: '🟢 Low Risk',    emoji: '🟢' },
@@ -95,7 +130,7 @@ function doGet(e) {
     if (type === 'ANALYZE') return analyze(e.parameter.ticker, parseFloat(e.parameter.amount) || 100, e.parameter.analyzeType, e.parameter.username);
     if (type === 'UPDATE')  return recordTrade(e.parameter.ticker, e.parameter.tradeType, parseFloat(e.parameter.amount), parseFloat(e.parameter.price), e.parameter.username);
     if (type === 'CHECK')   return portfolio(e.parameter.username);
-    if (type === 'SCAN_INIT')         return scanInit(e.parameter.username || '');
+    if (type === 'SCAN_INIT')         return scanInit(e.parameter.username || '', '');
     if (type === 'CHECK_GOOD_STOCK')  return checkGoodStock();
     return json({ message: '⚠️ No command provided.' });
 
@@ -122,7 +157,7 @@ function handleMessage(raw, chatId, tgUsername, tgId) {
   if (cmd === 'HELP')     return sendHelp(chatId);
   if (cmd === 'REGISTER') return sendRegisterInfo();
   if (cmd === 'EXPLAIN')  return sendExplain(parts[1] || '');
-  if (cmd === 'SCAN-INIT' || cmd === 'SCANINIT')         return scanInit(sessionUser || '');
+  if (cmd === 'SCAN-INIT' || cmd === 'SCANINIT')         return scanInit(sessionUser || '', chatId);
   if (cmd === 'CHECK-GOOD-STOCK' || cmd === 'CHECKGOODSTOCK') return checkGoodStock();
   if (cmd === 'GETPROFILE') {
     // Web app calls: GETPROFILE username — returns current profile from sheet
@@ -147,7 +182,7 @@ function handleMessage(raw, chatId, tgUsername, tgId) {
     if (cmd === 'SELL')      return promptSell();
     if (cmd === 'UPDATE')    return promptUpdate();
     if (cmd === 'CHECK')     return runCheck(chatId, tgUsername, tgId, sessionUser);
-    if (cmd === 'SCAN-INIT' || cmd === 'SCANINIT') return scanInit(sessionUser);
+    if (cmd === 'SCAN-INIT' || cmd === 'SCANINIT') return scanInit(sessionUser, chatId);
     if (cmd === 'CHECK-GOOD-STOCK' || cmd === 'CHECKGOODSTOCK') return checkGoodStock();
     if (cmd === 'WATCHLIST') return promptWatchlist();
     return sendHelp(chatId);
@@ -291,7 +326,7 @@ One-time contribution: IDR 49,000` });
   }
 
   if (cmd === 'SCAN' && (parts[1]||'').toUpperCase() === 'INIT' || cmd === 'SCAN-INIT' || cmd === 'SCANINIT') {
-    return scanInit(sessionUser);
+    return scanInit(sessionUser, chatId);
   }
   if (cmd === 'CHECK' && (parts[1]||'').toUpperCase() === 'GOOD' || cmd === 'CHECKGOODSTOCK' || cmd === 'CHECK-GOOD-STOCK') {
     return checkGoodStock();
@@ -1538,12 +1573,10 @@ function fetchDayChange(ticker) {
   const prevClose = closes[closes.length - 2];
   const changePct = ((current - prevClose) / prevClose) * 100;
   const avgVol    = meta.regularMarketVolume || 0;
-  // Also get 30-day avg volume from different endpoint
   return { current, changePct, avgVolume: avgVol };
 }
 
 function fetchAvgVolume(ticker) {
-  // Get 3-month daily data to compute avg volume
   const url  = 'https://query1.finance.yahoo.com/v8/finance/chart/' + encodeURIComponent(ticker) +
                '?interval=1d&range=3mo&includePrePost=false';
   const resp = UrlFetchApp.fetch(url, {
@@ -1559,91 +1592,95 @@ function fetchAvgVolume(ticker) {
   return valid.reduce((a, b) => a + b, 0) / valid.length;
 }
 
-function scanInit(username) {
-  const today = Utilities.formatDate(new Date(), 'Asia/Jakarta', 'yyyy-MM-dd');
+/** One Yahoo chart request: 3mo daily — avg volume + day-over-day % change */
+function fetchScanMetrics(ticker) {
+  const url  = 'https://query1.finance.yahoo.com/v8/finance/chart/' + encodeURIComponent(ticker) +
+               '?interval=1d&range=3mo&includePrePost=false';
+  const resp = UrlFetchApp.fetch(url, {
+    headers: { 'User-Agent': 'Mozilla/5.0', 'Accept': 'application/json' },
+    muteHttpExceptions: true
+  });
+  if (resp.getResponseCode() !== 200) return null;
+  const data = JSON.parse(resp.getContentText());
+  if (!data.chart || !data.chart.result || !data.chart.result[0]) return null;
+  const result = data.chart.result[0];
+  const quote  = result.indicators.quote[0];
+  const closes = (quote.close || []).filter(p => p !== null && !isNaN(p));
+  const volumes = quote.volume || [];
+  const validVol = volumes.filter(v => v && v > 0);
+  if (closes.length < 2) return null;
+  const meta = result.meta;
+  const current = meta.regularMarketPrice || closes[closes.length - 1];
+  const prevClose = closes[closes.length - 2];
+  const changePct = ((current - prevClose) / prevClose) * 100;
+  const avgVol = validVol.length ? validVol.reduce((a, b) => a + b, 0) / validVol.length : 0;
+  return { current: current, changePct: changePct, avgVolume: avgVol };
+}
 
-  // Check if already run today
-  const lastDate = getLastScanDate();
-  if (lastDate === today) {
-    return json({ message:
-`✅ SCAN ALREADY DONE TODAY
-
-Market scan was completed for ${today}.
-
-Tap /check-good-stock to see the results.`, scanned: true, date: today });
+function getDedupedWatchTickers() {
+  const seen = {};
+  const out  = [];
+  for (let i = 0; i < WATCH_TICKERS.length; i++) {
+    const t = String(WATCH_TICKERS[i]).trim().toUpperCase();
+    if (!t || seen[t]) continue;
+    seen[t] = true;
+    out.push(t);
   }
+  return out;
+}
 
-  // Popular US stocks with typically high volume — scan subset for performance
-  // Using a curated list of high-volume US stocks as Yahoo screener is not public API
-  const WATCH_TICKERS = [
-    'AAPL','MSFT','NVDA','AMZN','GOOGL','META','TSLA','AMD','INTC','NFLX',
-    'BABA','BAC','JPM','WFC','GS','MS','C','WMT','COST','TGT',
-    'DIS','CMCSA','T','VZ','ORCL','CRM','ADBE','QCOM','AVGO','MU',
-    'F','GM','RIVN','LCID','NIO','PLTR','SNOW','UBER','LYFT','ABNB',
-    'COIN','HOOD','SOFI','AFRM','UPST','SQ','PYPL','V','MA','AXP',
-    'XOM','CVX','COP','OXY','BP','HAL','SLB','PFE','MRNA','JNJ',
-    'ABT','TMO','DHR','UNH','CVS','WBA','GILD','BIIB','REGN','LLY',
-    'BA','RTX','LMT','NOC','GD','CAT','DE','MMM','GE','HON',
-    'SPY','QQQ','IWM','DIA','ARKK','XLF','XLE','XLK','XLV','XLI'
-  ];
-
-  const results   = [];
-  const minAvgVol = 4000000; // 4M avg volume filter
-  const dropThreshold = -10;   // -10% or worse
-
-  for (const ticker of WATCH_TICKERS) {
-    try {
-      const avgVol = fetchAvgVolume(ticker);
-      if (avgVol < minAvgVol) continue; // Skip low-volume stocks
-
-      const info = fetchDayChange(ticker);
-      if (!info) continue;
-      if (info.changePct > dropThreshold) continue; // Only big drops
-
-      results.push({
-        ticker,
-        changePct: +info.changePct.toFixed(2),
-        currentPrice: +info.current.toFixed(2),
-        avgVolume: Math.round(avgVol)
-      });
-    } catch(e) {
-      // Skip failed tickers silently
-    }
+function tryMatchScanTicker(ticker, minAvgVol, dropThreshold) {
+  try {
+    const m = fetchScanMetrics(ticker);
+    if (!m || m.avgVolume < minAvgVol) return null;
+    if (m.changePct > dropThreshold) return null;
+    return {
+      ticker:       ticker,
+      changePct:    +m.changePct.toFixed(2),
+      currentPrice: +m.current.toFixed(2),
+      avgVolume:    Math.round(m.avgVolume)
+    };
+  } catch (e) {
+    return null;
   }
+}
 
-  // Sort most negative first
-  results.sort((a, b) => a.changePct - b.changePct);
-
-  // Save to scan_results sheet
+function finalizeScanToSheet(today, results) {
+  results.sort(function (a, b) { return a.changePct - b.changePct; });
   const sheet = getScanResultsSheet();
-  // Clear old data (keep header)
   if (sheet.getLastRow() > 1) {
     sheet.deleteRows(2, sheet.getLastRow() - 1);
   }
-  results.forEach(r => {
+  for (let i = 0; i < results.length; i++) {
+    const r = results[i];
     sheet.appendRow([today, r.ticker, r.changePct, r.currentPrice, r.avgVolume]);
-  });
-
-  // Update scan date
+  }
   setLastScanDate(today);
   SpreadsheetApp.flush();
+}
 
+function scanResponseComplete(today, results) {
   if (results.length === 0) {
-    return json({ message:
+    return json({
+      message:
 `📊 MARKET SCAN COMPLETE
 
 Date: ${today}
 No stocks found with ≥4M avg volume that dropped ≥10% today.
 
 Market may be stable today. Try again tomorrow.`,
-      results: [], date: today, count: 0 });
+      scanned:      false,
+      scanComplete: true,
+      results:      [],
+      date:         today,
+      count:        0
+    });
   }
-
-  const lines = results.slice(0, 10).map(r =>
-    `${r.ticker.padEnd(6)} ${r.changePct.toFixed(1)}%  $${r.currentPrice}`
-  );
-
-  return json({ message:
+  const lines = results.slice(0, 10).map(function (r) {
+    return r.ticker.padEnd(6) + ' ' + r.changePct.toFixed(1) + '%  $' + r.currentPrice;
+  });
+  return json({
+    message:
 `📊 MARKET SCAN COMPLETE
 
 Date: ${today}
@@ -1653,7 +1690,96 @@ Found: ${results.length} stocks dropped ≥10%
 ${lines.join('\n')}
 
 Use /check-good-stock to see full list.`,
-    results, date: today, count: results.length });
+    scanned:      false,
+    scanComplete: true,
+    results:      results,
+    date:         today,
+    count:        results.length
+  });
+}
+
+/** Telegram / single-shot: process full list in one execution (one UrlFetch per ticker). */
+function scanInitTelegramFull(today) {
+  PropertiesService.getScriptProperties().deleteProperty(SCAN_SESSION_PROP);
+  const list            = getDedupedWatchTickers();
+  const minAvgVol       = 4000000;
+  const dropThreshold   = -10;
+  const results         = [];
+  for (let i = 0; i < list.length; i++) {
+    const hit = tryMatchScanTicker(list[i], minAvgVol, dropThreshold);
+    if (hit) results.push(hit);
+  }
+  finalizeScanToSheet(today, results);
+  return scanResponseComplete(today, results);
+}
+
+/** Web app: one chunk per HTTP request; state in ScriptProperties. */
+function scanInitWebChunk(today) {
+  const props = PropertiesService.getScriptProperties();
+  const list  = getDedupedWatchTickers();
+  const minAvgVol     = 4000000;
+  const dropThreshold = -10;
+  let state = null;
+  try {
+    state = JSON.parse(props.getProperty(SCAN_SESSION_PROP) || 'null');
+  } catch (e) {
+    state = null;
+  }
+  if (!state || state.date !== today || !Array.isArray(state.hits)) {
+    state = { v: 1, date: today, i: 0, hits: [] };
+  }
+  const end = Math.min(state.i + SCAN_CHUNK_SIZE, list.length);
+  for (let idx = state.i; idx < end; idx++) {
+    const hit = tryMatchScanTicker(list[idx], minAvgVol, dropThreshold);
+    if (hit) state.hits.push(hit);
+  }
+  state.i = end;
+  if (state.i >= list.length) {
+    const results = state.hits;
+    props.deleteProperty(SCAN_SESSION_PROP);
+    finalizeScanToSheet(today, results);
+    return scanResponseComplete(today, results);
+  }
+  props.setProperty(SCAN_SESSION_PROP, JSON.stringify(state));
+  const progress = list.length ? state.i / list.length : 1;
+  return json({
+    scanned:       false,
+    scanComplete:  false,
+    processed:     state.i,
+    total:         list.length,
+    progress:      progress,
+    status:        'Scanning… ' + state.i + ' / ' + list.length + ' tickers',
+    chunkMatches:  state.hits.length
+  });
+}
+
+/**
+ * Market scan (once per calendar day, Asia/Jakarta).
+ * Web (no chatId): chunked steps — call SCAN-INIT repeatedly until scanComplete.
+ * Telegram (chatId set): full scan in one invocation.
+ */
+function scanInit(username, chatId) {
+  const today = Utilities.formatDate(new Date(), 'Asia/Jakarta', 'yyyy-MM-dd');
+  const lastDate = getLastScanDate();
+  if (lastDate === today) {
+    PropertiesService.getScriptProperties().deleteProperty(SCAN_SESSION_PROP);
+    return json({
+      message:
+`✅ SCAN ALREADY DONE TODAY
+
+Market scan was completed for ${today}.
+
+Tap /check-good-stock to see the results.`,
+      scanned:      true,
+      date:         today,
+      scanComplete: true
+    });
+  }
+  const isTelegram = !!chatId;
+  if (isTelegram) {
+    return scanInitTelegramFull(today);
+  }
+  return scanInitWebChunk(today);
 }
 
 // ══════════════════════════════════════════════
