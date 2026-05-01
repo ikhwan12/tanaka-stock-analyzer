@@ -1019,7 +1019,7 @@ async function runScanInit() {
       return;
     }
     updateGsScanProgressBar(d);
-    while (d && d.scanComplete === false && guard++ < 100) {
+    while (d && d.scanComplete === false && guard++ < 600) {
       d = await callAPI('SCAN-INIT');
       updateGsScanProgressBar(d);
     }

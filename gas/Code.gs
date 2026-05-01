@@ -5,40 +5,76 @@
 const SPREADSHEET_ID = '1VqEPNEgGlhCQqO-g7yNwwFeiRi2JuzwM-758JgTw2Fg';
 const BOT_TOKEN      = '8777002152:AAGlHUUQ2C5b1MoAUhRzPZMLUTvYYC5Q4lg';
 
-// Curated universe for Good Stock market scan (deduped at runtime). Duplicates (e.g. TSLA, NIO) appear once.
-const WATCH_TICKERS = [
-  // Mega Cap Tech
-  'AAPL', 'MSFT', 'NVDA', 'AMZN', 'GOOGL', 'META', 'TSLA', 'NFLX',
-  'AMD', 'INTC', 'AVGO', 'QCOM', 'TXN', 'ADBE', 'CRM', 'ORCL', 'CSCO', 'IBM',
-  // AI / Growth
-  'PLTR', 'SNOW', 'DDOG', 'NET', 'ZS', 'MDB', 'AI', 'C3AI', 'PATH', 'U',
-  // Finance
-  'JPM', 'BAC', 'WFC', 'C', 'GS', 'MS', 'AXP', 'SCHW', 'BLK',
-  // Fintech
-  'PYPL', 'SQ', 'COIN', 'HOOD', 'SOFI', 'AFRM', 'UPST',
-  // Retail / Consumer
-  'WMT', 'COST', 'TGT', 'HD', 'LOW', 'NKE', 'SBUX', 'MCD', 'PEP', 'KO',
-  // Communication
-  'DIS', 'CMCSA', 'T', 'VZ', 'TMUS', 'ROKU',
-  // Energy
-  'XOM', 'CVX', 'COP', 'OXY', 'SLB', 'HAL',
-  // Healthcare
-  'JNJ', 'PFE', 'MRNA', 'LLY', 'UNH', 'CVS', 'ABT', 'TMO', 'DHR', 'GILD', 'REGN',
-  // Industrials
-  'BA', 'RTX', 'LMT', 'NOC', 'GD', 'CAT', 'DE', 'GE', 'HON', 'MMM', 'UPS', 'FDX',
-  // Auto / EV
-  'F', 'GM', 'RIVN', 'LCID', 'NIO',
-  // Travel / Platform
-  'UBER', 'LYFT', 'ABNB', 'BKNG', 'EXPE',
-  // China ADRs
-  'BABA', 'JD', 'PDD', 'LI', 'XPEV',
-  // ETFs
-  'SPY', 'QQQ', 'IWM', 'DIA', 'ARKK',
-  'XLF', 'XLE', 'XLK', 'XLV', 'XLI', 'XLY', 'XLP', 'XLU', 'XLB', 'XLRE'
-];
+// Deployed JSON list (repo: gas/watch-tickers.json → /api/watch-tickers). Override via Script Properties key WATCH_TICKERS_JSON_URL if needed.
+const WATCH_TICKERS_JSON_URL_DEFAULT = 'https://tanaka-stock-analyzer.vercel.app/api/watch-tickers';
+const WATCH_TICKERS_CACHE_KEY        = 'watch_tickers_deduped_v2';
+const WATCH_TICKERS_CACHE_SEC        = 3600;
+
+/** If fetch fails, scan still runs on this minimal set */
+const WATCH_TICKERS_FALLBACK = ['SPY', 'QQQ', 'IWM', 'AAPL', 'MSFT', 'NVDA', 'AMZN', 'META', 'GOOGL', 'TSLA'];
 
 const SCAN_SESSION_PROP = 'market_scan_session_v1';
-const SCAN_CHUNK_SIZE   = 12;
+/** Tickers processed per HTTP request (web) or per inner step (Telegram multi-step) */
+const SCAN_CHUNK_SIZE = 25;
+/** Telegram: keep running chunks in one /scan-init until this many ms elapsed */
+const TELEGRAM_SCAN_BUDGET_MS = 270000;
+
+function getWatchTickersJsonUrl() {
+  try {
+    const u = PropertiesService.getScriptProperties().getProperty('WATCH_TICKERS_JSON_URL');
+    if (u && String(u).trim()) return String(u).trim();
+  } catch (e) {}
+  return WATCH_TICKERS_JSON_URL_DEFAULT;
+}
+
+function dedupeTickerStrings(arr) {
+  const seen = {};
+  const out  = [];
+  for (let i = 0; i < arr.length; i++) {
+    const t = String(arr[i]).trim().toUpperCase();
+    if (!t || seen[t]) continue;
+    seen[t] = true;
+    out.push(t);
+  }
+  return out;
+}
+
+/**
+ * Full scan universe: fetched from Vercel /api/watch-tickers (gas/watch-tickers.json), cached 1h.
+ */
+function getDedupedWatchTickers() {
+  const cache = CacheService.getScriptCache();
+  const hit   = cache.get(WATCH_TICKERS_CACHE_KEY);
+  if (hit) {
+    try {
+      const parsed = JSON.parse(hit);
+      if (Array.isArray(parsed) && parsed.length) return parsed;
+    } catch (e) {}
+  }
+  let list = [];
+  try {
+    const url  = getWatchTickersJsonUrl();
+    const resp = UrlFetchApp.fetch(url, {
+      muteHttpExceptions: true,
+      followRedirects:    true,
+      headers:          { 'User-Agent': 'TanakaStockBot/1.0', 'Accept': 'application/json' }
+    });
+    if (resp.getResponseCode() !== 200) throw new Error('HTTP ' + resp.getResponseCode());
+    const arr = JSON.parse(resp.getContentText());
+    if (!Array.isArray(arr)) throw new Error('not an array');
+    list = dedupeTickerStrings(arr);
+  } catch (e) {
+    list = dedupeTickerStrings(WATCH_TICKERS_FALLBACK);
+  }
+  if (list.length) {
+    try {
+      cache.put(WATCH_TICKERS_CACHE_KEY, JSON.stringify(list), WATCH_TICKERS_CACHE_SEC);
+    } catch (e) {
+      /* list may exceed 100KB Script Cache limit — scan still works without cache */
+    }
+  }
+  return list;
+}
 
 // ── Risk Profile Thresholds ───────────────────
 const PROFILES = {
@@ -1617,18 +1653,6 @@ function fetchScanMetrics(ticker) {
   return { current: current, changePct: changePct, avgVolume: avgVol };
 }
 
-function getDedupedWatchTickers() {
-  const seen = {};
-  const out  = [];
-  for (let i = 0; i < WATCH_TICKERS.length; i++) {
-    const t = String(WATCH_TICKERS[i]).trim().toUpperCase();
-    if (!t || seen[t]) continue;
-    seen[t] = true;
-    out.push(t);
-  }
-  return out;
-}
-
 function tryMatchScanTicker(ticker, minAvgVol, dropThreshold) {
   try {
     const m = fetchScanMetrics(ticker);
@@ -1698,25 +1722,13 @@ Use /check-good-stock to see full list.`,
   });
 }
 
-/** Telegram / single-shot: process full list in one execution (one UrlFetch per ticker). */
-function scanInitTelegramFull(today) {
-  PropertiesService.getScriptProperties().deleteProperty(SCAN_SESSION_PROP);
-  const list            = getDedupedWatchTickers();
-  const minAvgVol       = 4000000;
-  const dropThreshold   = -10;
-  const results         = [];
-  for (let i = 0; i < list.length; i++) {
-    const hit = tryMatchScanTicker(list[i], minAvgVol, dropThreshold);
-    if (hit) results.push(hit);
-  }
-  finalizeScanToSheet(today, results);
-  return scanResponseComplete(today, results);
-}
-
-/** Web app: one chunk per HTTP request; state in ScriptProperties. */
-function scanInitWebChunk(today) {
-  const props = PropertiesService.getScriptProperties();
-  const list  = getDedupedWatchTickers();
+/**
+ * One chunk of the market scan. Returns a plain object (not ContentService).
+ * State is stored in ScriptProperties when scanComplete is false.
+ */
+function runMarketScanChunkObject(today) {
+  const props         = PropertiesService.getScriptProperties();
+  const list          = getDedupedWatchTickers();
   const minAvgVol     = 4000000;
   const dropThreshold = -10;
   let state = null;
@@ -1738,25 +1750,64 @@ function scanInitWebChunk(today) {
     const results = state.hits;
     props.deleteProperty(SCAN_SESSION_PROP);
     finalizeScanToSheet(today, results);
-    return scanResponseComplete(today, results);
+    return { scanComplete: true, results: results };
   }
   props.setProperty(SCAN_SESSION_PROP, JSON.stringify(state));
   const progress = list.length ? state.i / list.length : 1;
+  return {
+    scanComplete: false,
+    processed:    state.i,
+    total:        list.length,
+    progress:     progress,
+    status:       'Scanning… ' + state.i + ' / ' + list.length + ' tickers',
+    chunkMatches: state.hits.length
+  };
+}
+
+/** Web: one chunk per HTTP request. */
+function scanInitWebChunk(today) {
+  const o = runMarketScanChunkObject(today);
+  if (o.scanComplete) {
+    return scanResponseComplete(today, o.results);
+  }
   return json({
     scanned:       false,
     scanComplete:  false,
-    processed:     state.i,
-    total:         list.length,
-    progress:      progress,
-    status:        'Scanning… ' + state.i + ' / ' + list.length + ' tickers',
-    chunkMatches:  state.hits.length
+    processed:     o.processed,
+    total:         o.total,
+    progress:      o.progress,
+    status:        o.status,
+    chunkMatches:  o.chunkMatches
+  });
+}
+
+/** Telegram: many chunks in one /scan-init until time budget; repeat /scan-init to resume if needed. */
+function scanInitTelegramFull(today) {
+  const deadline = Date.now() + TELEGRAM_SCAN_BUDGET_MS;
+  var last         = null;
+  while (Date.now() < deadline) {
+    last = runMarketScanChunkObject(today);
+    if (last.scanComplete) {
+      return scanResponseComplete(today, last.results);
+    }
+  }
+  return json({
+    message:
+      '⏳ Market scan in progress — ' + (last ? last.processed : 0) + ' / ' + (last ? last.total : 0) + ' tickers.\n\nTap /scan-init again to continue.',
+    scanned:       false,
+    scanComplete:  false,
+    processed:     last ? last.processed : 0,
+    total:         last ? last.total : 0,
+    progress:      last ? last.progress : 0,
+    status:        last ? last.status : '',
+    chunkMatches:  last ? last.chunkMatches : 0
   });
 }
 
 /**
  * Market scan (once per calendar day, Asia/Jakarta).
  * Web (no chatId): chunked steps — call SCAN-INIT repeatedly until scanComplete.
- * Telegram (chatId set): full scan in one invocation.
+ * Telegram (chatId set): runs chunks until time budget; may need another /scan-init.
  */
 function scanInit(username, chatId) {
   const today = Utilities.formatDate(new Date(), 'Asia/Jakarta', 'yyyy-MM-dd');
