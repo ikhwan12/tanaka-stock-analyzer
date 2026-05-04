@@ -1034,9 +1034,17 @@ async function loadGoodStock() {
 
     if (d.date && d.scanComplete !== false && (d.count > 0 || (d.results && d.results.length > 0))) {
       gsScanLiveProgress = null;
-      statusEl.textContent = '✅ ' + (d.count || 0) + ' top mover(s) loaded · ' + topMoverLastUpdatedLine(d);
-      btnScan.disabled = true;
-      btnScan.textContent = isOperator ? '✅ Already Scanned Today' : 'Scan: operator only';
+      var staleComplete = d.isStaleScan === true;
+      statusEl.textContent = (staleComplete
+        ? '📋 ' + (d.count || 0) + ' top mover(s) from last saved scan · '
+        : '✅ ' + (d.count || 0) + ' top mover(s) loaded · ') + topMoverLastUpdatedLine(d);
+      if (staleComplete) {
+        btnScan.disabled = !isOperator;
+        btnScan.textContent = isOperator ? '🔍 Run Market Scan' : 'Scan: operator only';
+      } else {
+        btnScan.disabled = true;
+        btnScan.textContent = isOperator ? '✅ Already Scanned Today' : 'Scan: operator only';
+      }
       gsAllResults = d.results || [];
       gsCurrentPage = 1;
       renderGoodStockTable();
@@ -1045,11 +1053,21 @@ async function loadGoodStock() {
 
     if (d.date && d.scanComplete !== false && (!d.count || d.count === 0)) {
       gsScanLiveProgress = null;
-      statusEl.textContent = '✅ No matches for this scan · ' + topMoverLastUpdatedLine(d);
-      btnScan.disabled = true;
-      btnScan.textContent = isOperator ? '✅ Already Scanned Today' : 'Scan: operator only';
-      gsAllResults = [];
-      contentEl.innerHTML = '<div class="pos-empty" style="padding:32px 0;text-align:center;">No stocks over $5 dropped ≥10% with ≥4M avg volume today.</div>';
+      var staleEmpty = d.isStaleScan === true;
+      statusEl.textContent = (staleEmpty
+        ? '📋 No matches on last saved scan · '
+        : '✅ No matches for this scan · ') + topMoverLastUpdatedLine(d);
+      if (staleEmpty) {
+        btnScan.disabled = !isOperator;
+        btnScan.textContent = isOperator ? '🔍 Run Market Scan' : 'Scan: operator only';
+        gsAllResults = [];
+        contentEl.innerHTML = '<div class="pos-empty" style="padding:32px 0;text-align:center;">Last saved scan (' + String(d.date || '') + ') had no matches. Run a new scan for today.</div>';
+      } else {
+        btnScan.disabled = true;
+        btnScan.textContent = isOperator ? '✅ Already Scanned Today' : 'Scan: operator only';
+        gsAllResults = [];
+        contentEl.innerHTML = '<div class="pos-empty" style="padding:32px 0;text-align:center;">No stocks over $5 dropped ≥10% with ≥4M avg volume today.</div>';
+      }
       return;
     }
 
