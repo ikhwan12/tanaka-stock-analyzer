@@ -356,6 +356,8 @@ One-time contribution: IDR 49,000` });
         webUser = parts[2] || ''; // PROFILE KEY username → username at parts[2]
       } else if (cmd === 'BALANCE' || cmd === 'CLEAR') {
         webUser = parts[1] || ''; // BALANCE username / CLEAR username YES
+      } else if (cmd === 'DEPOSIT' || cmd === 'WITHDRAW') {
+        webUser = parts[1] || ''; // DEPOSIT username amount / WITHDRAW username amount
       } else {
         webUser = parts[parts.length - 1] || ''; // BUY/SELL/UPDATE/CHECK username
       }
