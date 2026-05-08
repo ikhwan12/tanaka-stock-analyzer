@@ -1055,6 +1055,8 @@ function getUserHoldings(username) {
     if (rowUser.toLowerCase() !== u.toLowerCase()) return;
     const ticker = String(r[tIdx]).trim();
     const type   = String(r[typeIdx]).trim();
+    // Skip CASH rows — DEPOSIT/WITHDRAW affect balance only, not stock holdings
+    if (ticker === 'CASH') return;
     const amount = +r[aIdx];
     const shares = +r[sIdx];
 
