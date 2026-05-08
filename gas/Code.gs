@@ -583,32 +583,26 @@ Example: WITHDRAW 200` });
 
 function promptDeposit() {
   return json({ message:
-\`💵 DEPOSIT FUNDS
-
-Record a deposit into your GoTrade account.
-GoTrade fee: FREE ✅
-
-Type:
-DEPOSIT amount
-Example: DEPOSIT 500
-
-This will update your portfolio balance
-and record the transaction.\` });
+'DEPOSIT FUNDS\n\n' +
+'Record a deposit into your GoTrade account.\n' +
+'GoTrade fee: FREE\n\n' +
+'Type:\n' +
+'DEPOSIT amount\n' +
+'Example: DEPOSIT 500\n\n' +
+'This will update your portfolio balance\n' +
+'and record the transaction.' });
 }
 
 function promptWithdraw() {
   return json({ message:
-\`🏦 WITHDRAW FUNDS
-
-Record a withdrawal from your GoTrade account.
-GoTrade fee: $5.00 flat ⚠️
-
-Type:
-WITHDRAW amount
-Example: WITHDRAW 200
-
-The $5 fee will be automatically deducted
-from your portfolio balance.\` });
+'WITHDRAW FUNDS\n\n' +
+'Record a withdrawal from your GoTrade account.\n' +
+'GoTrade fee: $5.00 flat\n\n' +
+'Type:\n' +
+'WITHDRAW amount\n' +
+'Example: WITHDRAW 200\n\n' +
+'The $5 fee will be automatically deducted\n' +
+'from your portfolio balance.' });
 }
 
 function promptWatchlist() {
