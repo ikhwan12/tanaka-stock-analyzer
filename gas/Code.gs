@@ -219,6 +219,8 @@ function doGet(e) {
     if (type === 'ANALYZE') return analyze(e.parameter.ticker, parseFloat(e.parameter.amount) || 100, e.parameter.analyzeType, e.parameter.username);
     if (type === 'UPDATE')  return recordTrade(e.parameter.ticker, e.parameter.tradeType, parseFloat(e.parameter.amount), parseFloat(e.parameter.price), e.parameter.username);
     if (type === 'CHECK')   return portfolio(e.parameter.username);
+    if (type === 'DEPOSIT')  return recordCashFlow('DEPOSIT',  parseFloat(e.parameter.amount), e.parameter.username);
+    if (type === 'WITHDRAW') return recordCashFlow('WITHDRAW', parseFloat(e.parameter.amount), e.parameter.username);
     if (type === 'SCAN_INIT') {
       const u = (e.parameter.username || '').trim().toLowerCase();
       if (!isMarketScanWebUser_(u)) return json({ success: false, message: 'Forbidden.' });
@@ -299,6 +301,8 @@ function handleMessage(raw, chatId, tgUsername, tgId) {
     if (cmd === 'EXPLAIN')   return sendExplain('');
     if (cmd === 'PROFILE')   return promptProfile();
     if (cmd === 'BALANCE')   return getBalance(sessionUser);
+    if (cmd === 'DEPOSIT')   return promptDeposit();
+    if (cmd === 'WITHDRAW')  return promptWithdraw();
     if (cmd === 'CLEAR')     return promptClear();
     if (cmd === 'BUY')       return promptBuy();
     if (cmd === 'SELL')      return promptSell();
@@ -448,6 +452,26 @@ One-time contribution: IDR 49,000` });
     return clearPortfolio(uClr);
   }
 
+  // DEPOSIT / WITHDRAW
+  // Telegram: DEPOSIT 500   |  Web: DEPOSIT username 500
+  // Telegram: WITHDRAW 500  |  Web: WITHDRAW username 500
+  if (cmd === 'DEPOSIT') {
+    const uDep = sessionUser || parts[1] || '';
+    const amt  = sessionUser
+      ? parseFloat(parts[1])          // Telegram: DEPOSIT 500
+      : parseFloat(parts[2]);         // Web:      DEPOSIT username 500
+    if (isNaN(amt) || amt <= 0) return promptDeposit();
+    return recordCashFlow('DEPOSIT', amt, uDep);
+  }
+  if (cmd === 'WITHDRAW') {
+    const uWit = sessionUser || parts[1] || '';
+    const amt  = sessionUser
+      ? parseFloat(parts[1])          // Telegram: WITHDRAW 500
+      : parseFloat(parts[2]);         // Web:      WITHDRAW username 500
+    if (isNaN(amt) || amt <= 0) return promptWithdraw();
+    return recordCashFlow('WITHDRAW', amt, uWit);
+  }
+
   if (cmd === 'SCAN' && (parts[1] || '').toUpperCase() === 'INIT') {
     if (chatId) {
       return json({ message: '🔒 Market scan runs only on the Tanaka Stock web app.\n\nUse CHECK-TOP-MOVER to see today\'s top movers.' });
@@ -548,7 +572,43 @@ Example: UPDATE AMZN S100 195.00
 
 B = Buy, S = Sell
 AMOUNT = total USD spent
-PRICE = price per share` });
+PRICE = price per share
+
+💵 CASH FLOW
+DEPOSIT amount  → add funds (free)
+WITHDRAW amount → withdraw funds ($5 fee)
+Example: DEPOSIT 500
+Example: WITHDRAW 200` });
+}
+
+function promptDeposit() {
+  return json({ message:
+\`💵 DEPOSIT FUNDS
+
+Record a deposit into your GoTrade account.
+GoTrade fee: FREE ✅
+
+Type:
+DEPOSIT amount
+Example: DEPOSIT 500
+
+This will update your portfolio balance
+and record the transaction.\` });
+}
+
+function promptWithdraw() {
+  return json({ message:
+\`🏦 WITHDRAW FUNDS
+
+Record a withdrawal from your GoTrade account.
+GoTrade fee: $5.00 flat ⚠️
+
+Type:
+WITHDRAW amount
+Example: WITHDRAW 200
+
+The $5 fee will be automatically deducted
+from your portfolio balance.\` });
 }
 
 function promptWatchlist() {
@@ -2520,4 +2580,95 @@ function deleteScanTrigger() {
   Logger.log(count > 0
     ? 'Deleted ' + count + ' scheduledMarketScan trigger(s).'
     : 'No scheduledMarketScan triggers found.');
+}
+
+// ══════════════════════════════════════════════
+//  DEPOSIT / WITHDRAW — Cash flow tracking
+//  DEPOSIT: free (GoTrade direct USD fee: FREE)
+//  WITHDRAW: $5 flat fee (GoTrade processing fee)
+// ══════════════════════════════════════════════
+
+const WITHDRAW_FEE = 5.00;
+const DEPOSIT_FEE  = 0.00;
+
+function recordCashFlow(type, amount, username) {
+  if (!username)           return json({ message: '⚠️ Username required.' });
+  if (isNaN(amount) || amount <= 0)
+    return json({ message: '❓ Invalid amount.
+
+Example: ' + type + ' 500' });
+  if (!isValidUser(username))
+    return json({ success: false, unauthorized: true, message: '🔑 Please login first.' });
+
+  const fee      = type === 'WITHDRAW' ? WITHDRAW_FEE : DEPOSIT_FEE;
+  const netDelta = type === 'WITHDRAW' ? -(amount + fee) : amount; // positive = add money
+  const date     = Utilities.formatDate(new Date(), 'Asia/Jakarta', 'yyyy-MM-dd');
+
+  // ── Record in transactions sheet ─────────────────────────────────────────
+  const ss    = SpreadsheetApp.openById(getSpreadsheetId_());
+  let txSheet = ss.getSheetByName('transactions');
+  if (!txSheet) {
+    txSheet = ss.insertSheet('transactions');
+    txSheet.appendRow(['date','username','ticker','type','amount_usd','price','shares','fee']);
+  }
+  // ticker = 'CASH', price = 1, shares = amount (so amount_usd = shares * price = amount)
+  txSheet.appendRow([date, username, 'CASH', type, amount, 1, amount, fee]);
+
+  // ── Update initial_balance in users sheet ────────────────────────────────
+  const uSheet  = ss.getSheetByName('users');
+  if (uSheet) {
+    const rows    = uSheet.getDataRange().getValues();
+    const headers = rows[0].map(h => String(h).trim().toLowerCase());
+    const uCol    = headers.indexOf('username');
+    let   bCol    = headers.indexOf('initial_balance');
+    if (bCol < 0) {
+      bCol = headers.length;
+      uSheet.getRange(1, bCol + 1).setValue('initial_balance');
+    }
+    for (let i = 1; i < rows.length; i++) {
+      if (String(rows[i][uCol]).trim().toLowerCase() === String(username).trim().toLowerCase()) {
+        const current = parseFloat(rows[i][bCol]) || 0;
+        const updated = Math.max(0, current + netDelta);
+        uSheet.getRange(i + 1, bCol + 1).setValue(+updated.toFixed(2));
+        break;
+      }
+    }
+  }
+
+  SpreadsheetApp.flush();
+
+  // ── Build response ────────────────────────────────────────────────────────
+  if (type === 'DEPOSIT') {
+    return json({ message:
+`✅ DEPOSIT RECORDED
+─────────────────────
+User:    ${username}
+Amount:  $${amount.toFixed(2)}
+Fee:     FREE ✅
+Date:    ${date}
+─────────────────────
+Your portfolio balance has been
+updated by +$${amount.toFixed(2)}.
+
+Use /check or CHECK to see your
+updated P&L.`,
+      success: true, type, amount, fee, date });
+  } else {
+    const total = amount + fee;
+    return json({ message:
+`🏦 WITHDRAWAL RECORDED
+─────────────────────
+User:      ${username}
+Withdrawn: $${amount.toFixed(2)}
+GoTrade fee: -$${fee.toFixed(2)}
+Total deducted: $${total.toFixed(2)}
+Date:      ${date}
+─────────────────────
+Your portfolio balance has been
+updated by -$${total.toFixed(2)}.
+
+Use /check or CHECK to see your
+updated P&L.`,
+      success: true, type, amount, fee, total, date });
+  }
 }
