@@ -445,31 +445,24 @@ One-time contribution: IDR 49,000` });
       return getBalance(uBal);
     }
   }
-  if (cmd === 'CLEAR') {
-    const uClr = sessionUser || parts[1] || '';
-    const confirmed = (parts[parts.length - 1] || '').toUpperCase() === 'YES';
-    if (!confirmed) return promptClear();
-    return clearPortfolio(uClr);
-  }
-
-  // DEPOSIT / WITHDRAW
-  // Telegram: DEPOSIT 500   |  Web: DEPOSIT username 500
-  // Telegram: WITHDRAW 500  |  Web: WITHDRAW username 500
   if (cmd === 'DEPOSIT') {
     const uDep = sessionUser || parts[1] || '';
-    const amt  = sessionUser
-      ? parseFloat(parts[1])          // Telegram: DEPOSIT 500
-      : parseFloat(parts[2]);         // Web:      DEPOSIT username 500
+    const amt  = sessionUser ? parseFloat(parts[1]) : parseFloat(parts[2]);
     if (isNaN(amt) || amt <= 0) return promptDeposit();
     return recordCashFlow('DEPOSIT', amt, uDep);
   }
   if (cmd === 'WITHDRAW') {
     const uWit = sessionUser || parts[1] || '';
-    const amt  = sessionUser
-      ? parseFloat(parts[1])          // Telegram: WITHDRAW 500
-      : parseFloat(parts[2]);         // Web:      WITHDRAW username 500
+    const amt  = sessionUser ? parseFloat(parts[1]) : parseFloat(parts[2]);
     if (isNaN(amt) || amt <= 0) return promptWithdraw();
     return recordCashFlow('WITHDRAW', amt, uWit);
+  }
+
+  if (cmd === 'CLEAR') {
+    const uClr = sessionUser || parts[1] || '';
+    const confirmed = (parts[parts.length - 1] || '').toUpperCase() === 'YES';
+    if (!confirmed) return promptClear();
+    return clearPortfolio(uClr);
   }
 
   if (cmd === 'SCAN' && (parts[1] || '').toUpperCase() === 'INIT') {
@@ -575,35 +568,38 @@ AMOUNT = total USD spent
 PRICE = price per share
 
 💵 CASH FLOW
-DEPOSIT amount  → add funds (free)
-WITHDRAW amount → withdraw funds ($5 fee)
-Example: DEPOSIT 500
-Example: WITHDRAW 200` });
+DEPOSIT 500   → deposit funds (free)
+WITHDRAW 200  → withdraw funds ($5 fee)` });
 }
 
 function promptDeposit() {
   return json({ message:
-'DEPOSIT FUNDS\n\n' +
-'Record a deposit into your GoTrade account.\n' +
-'GoTrade fee: FREE\n\n' +
-'Type:\n' +
-'DEPOSIT amount\n' +
-'Example: DEPOSIT 500\n\n' +
-'This will update your portfolio balance\n' +
-'and record the transaction.' });
+`💵 DEPOSIT FUNDS
+
+GoTrade deposit fee: FREE
+
+Type:
+DEPOSIT amount
+Example: DEPOSIT 500
+
+Updates your portfolio balance
+and records the transaction.` });
 }
 
 function promptWithdraw() {
   return json({ message:
-'WITHDRAW FUNDS\n\n' +
-'Record a withdrawal from your GoTrade account.\n' +
-'GoTrade fee: $5.00 flat\n\n' +
-'Type:\n' +
-'WITHDRAW amount\n' +
-'Example: WITHDRAW 200\n\n' +
-'The $5 fee will be automatically deducted\n' +
-'from your portfolio balance.' });
+`🏦 WITHDRAW FUNDS
+
+GoTrade withdrawal fee: $5.00 flat
+
+Type:
+WITHDRAW amount
+Example: WITHDRAW 200
+
+The $5 fee is automatically deducted
+from your portfolio balance.` });
 }
+
 
 function promptWatchlist() {
   return json({ message:
@@ -2575,94 +2571,67 @@ function deleteScanTrigger() {
     ? 'Deleted ' + count + ' scheduledMarketScan trigger(s).'
     : 'No scheduledMarketScan triggers found.');
 }
-
-// ══════════════════════════════════════════════
-//  DEPOSIT / WITHDRAW — Cash flow tracking
-//  DEPOSIT: free (GoTrade direct USD fee: FREE)
-//  WITHDRAW: $5 flat fee (GoTrade processing fee)
-// ══════════════════════════════════════════════
-
-const WITHDRAW_FEE = 5.00;
-const DEPOSIT_FEE  = 0.00;
-
+// DEPOSIT / WITHDRAW cash flow tracking
+// Deposit: FREE | Withdraw: $5.00 flat
 function recordCashFlow(type, amount, username) {
-  if (!username)           return json({ message: '⚠️ Username required.' });
+  if (!username) return json({ message: 'Username required.' });
   if (isNaN(amount) || amount <= 0)
-    return json({ message: '❓ Invalid amount.
-
-Example: ' + type + ' 500' });
+    return json({ message: 'Invalid amount. Example: ' + type + ' 500' });
   if (!isValidUser(username))
-    return json({ success: false, unauthorized: true, message: '🔑 Please login first.' });
+    return json({ success: false, unauthorized: true, message: 'Please login first.' });
 
-  const fee      = type === 'WITHDRAW' ? WITHDRAW_FEE : DEPOSIT_FEE;
-  const netDelta = type === 'WITHDRAW' ? -(amount + fee) : amount; // positive = add money
+  const fee      = (type === 'WITHDRAW') ? 5.00 : 0;
+  const netDelta = (type === 'WITHDRAW') ? -(amount + fee) : amount;
   const date     = Utilities.formatDate(new Date(), 'Asia/Jakarta', 'yyyy-MM-dd');
 
-  // ── Record in transactions sheet ─────────────────────────────────────────
   const ss    = SpreadsheetApp.openById(getSpreadsheetId_());
   let txSheet = ss.getSheetByName('transactions');
   if (!txSheet) {
     txSheet = ss.insertSheet('transactions');
     txSheet.appendRow(['date','username','ticker','type','amount_usd','price','shares','fee']);
   }
-  // ticker = 'CASH', price = 1, shares = amount (so amount_usd = shares * price = amount)
   txSheet.appendRow([date, username, 'CASH', type, amount, 1, amount, fee]);
 
-  // ── Update initial_balance in users sheet ────────────────────────────────
-  const uSheet  = ss.getSheetByName('users');
+  const uSheet = ss.getSheetByName('users');
   if (uSheet) {
     const rows    = uSheet.getDataRange().getValues();
-    const headers = rows[0].map(h => String(h).trim().toLowerCase());
+    const headers = rows[0].map(function(h){ return String(h).trim().toLowerCase(); });
     const uCol    = headers.indexOf('username');
     let   bCol    = headers.indexOf('initial_balance');
-    if (bCol < 0) {
-      bCol = headers.length;
-      uSheet.getRange(1, bCol + 1).setValue('initial_balance');
-    }
+    if (bCol < 0) { bCol = headers.length; uSheet.getRange(1, bCol + 1).setValue('initial_balance'); }
     for (let i = 1; i < rows.length; i++) {
       if (String(rows[i][uCol]).trim().toLowerCase() === String(username).trim().toLowerCase()) {
-        const current = parseFloat(rows[i][bCol]) || 0;
-        const updated = Math.max(0, current + netDelta);
-        uSheet.getRange(i + 1, bCol + 1).setValue(+updated.toFixed(2));
+        const cur = parseFloat(rows[i][bCol]) || 0;
+        uSheet.getRange(i + 1, bCol + 1).setValue(+(Math.max(0, cur + netDelta)).toFixed(2));
         break;
       }
     }
   }
-
   SpreadsheetApp.flush();
 
-  // ── Build response ────────────────────────────────────────────────────────
   if (type === 'DEPOSIT') {
     return json({ message:
 `✅ DEPOSIT RECORDED
 ─────────────────────
 User:    ${username}
-Amount:  $${amount.toFixed(2)}
-Fee:     FREE ✅
+Amount:  $$${amount.toFixed(2)}
+Fee:     FREE
 Date:    ${date}
 ─────────────────────
-Your portfolio balance has been
-updated by +$${amount.toFixed(2)}.
-
-Use /check or CHECK to see your
-updated P&L.`,
-      success: true, type, amount, fee, date });
+Balance updated: +$$${amount.toFixed(2)}`,
+      success: true, type: type, amount: amount, fee: 0, date: date });
   } else {
     const total = amount + fee;
     return json({ message:
-`🏦 WITHDRAWAL RECORDED
+`✅ WITHDRAWAL RECORDED
 ─────────────────────
-User:      ${username}
-Withdrawn: $${amount.toFixed(2)}
-GoTrade fee: -$${fee.toFixed(2)}
-Total deducted: $${total.toFixed(2)}
-Date:      ${date}
+User:       ${username}
+Withdrawn:  $$${amount.toFixed(2)}
+GoTrade fee: -$$${fee.toFixed(2)}
+Total out:  $$${total.toFixed(2)}
+Date:       ${date}
 ─────────────────────
-Your portfolio balance has been
-updated by -$${total.toFixed(2)}.
-
-Use /check or CHECK to see your
-updated P&L.`,
-      success: true, type, amount, fee, total, date });
+Balance updated: -$$${total.toFixed(2)}`,
+      success: true, type: type, amount: amount, fee: fee, date: date });
   }
 }
