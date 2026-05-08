@@ -2260,3 +2260,264 @@ Anyone can use CHECK-TOP-MOVER to follow the list.`,
   });
 }
 
+
+// ══════════════════════════════════════════════════════════════════
+//  AUTO SCHEDULER — runs market scan every weekday at 20:30 WIB
+//  Step 1: Run createScanTrigger() ONCE in GAS editor to set up
+//  Step 2: Never touch it again — it fires automatically
+// ══════════════════════════════════════════════════════════════════
+
+/**
+ * ONE-TIME SETUP: Run this function once in GAS editor.
+ * Creates a daily trigger at 20:30 WIB (UTC+7) = 13:30 UTC.
+ * Weekend guard is inside scheduledMarketScan() itself.
+ */
+function createScanTrigger() {
+  // Remove any existing scheduledMarketScan triggers to avoid duplicates
+  ScriptApp.getProjectTriggers().forEach(function(trigger) {
+    if (trigger.getHandlerFunction() === 'scheduledMarketScan') {
+      ScriptApp.deleteTrigger(trigger);
+    }
+  });
+
+  // Create a daily trigger at 20:00–21:00 WIB
+  // GAS uses the script timezone (Asia/Jakarta = UTC+7) for atHour()
+  // nearMinute(30) aims for ~20:30 WIB
+  ScriptApp.newTrigger('scheduledMarketScan')
+    .timeBased()
+    .everyDays(1)
+    .atHour(20)
+    .nearMinute(30)
+    .create();
+
+  Logger.log('✅ Trigger created: scheduledMarketScan will run daily at ~20:30 WIB (weekdays only).');
+  Logger.log('To verify, go to: Extensions → Apps Script → Triggers (clock icon on left sidebar).');
+}
+
+/**
+ * Called automatically every day at ~20:30 WIB by the trigger.
+ * Skips weekends. Runs the full market scan and saves to sheet.
+ */
+function scheduledMarketScan() {
+  const tz    = 'Asia/Jakarta';
+  const now   = new Date();
+  const dow   = Utilities.formatDate(now, tz, 'EEEE'); // e.g. "Saturday"
+  const today = Utilities.formatDate(now, tz, 'yyyy-MM-dd');
+
+  // Skip weekends — US markets are closed
+  if (dow === 'Saturday' || dow === 'Sunday') {
+    Logger.log('⏭ Skipping scheduled scan — today is ' + dow + ' (' + today + ')');
+    return;
+  }
+
+  // Skip if already scanned today (manual or previous trigger run)
+  const lastDate = getLastScanDate();
+  if (lastDate === today) {
+    Logger.log('⏭ Scan already done today (' + today + '). Skipping.');
+    return;
+  }
+
+  Logger.log('🔍 Starting scheduled market scan for ' + today + ' (' + dow + ')...');
+
+  try {
+    // Clear any leftover chunked session from a previous interrupted scan
+    PropertiesService.getScriptProperties().deleteProperty(SCAN_SESSION_PROP);
+
+    // Run the full scan — loop chunks until complete (no web timeout here)
+    var maxChunks = 50; // safety cap
+    var done      = false;
+
+    for (var i = 0; i < maxChunks; i++) {
+      var result = JSON.parse(scanInitWebChunk(today).getContent());
+
+      if (result.scanComplete === true) {
+        done = true;
+        Logger.log('✅ Scheduled scan complete: ' + result.count + ' top mover(s) found for ' + today);
+        break;
+      }
+
+      if (result.scanComplete === false) {
+        // Still chunking — log progress and continue
+        Logger.log('  ↳ Progress: ' + result.processed + '/' + result.total + ' tickers, ' + (result.count || 0) + ' match(es) so far...');
+        Utilities.sleep(500); // brief pause between chunks
+        continue;
+      }
+
+      // Unexpected response — break to avoid infinite loop
+      Logger.log('⚠️ Unexpected scan response: ' + JSON.stringify(result).substring(0, 200));
+      break;
+    }
+
+    if (!done) {
+      Logger.log('⚠️ Scan did not complete within ' + maxChunks + ' chunks. Check SCAN_SESSION_PROP in script properties.');
+    }
+
+  } catch (err) {
+    Logger.log('❌ Scheduled scan error: ' + err.toString());
+  }
+}
+
+/**
+ * OPTIONAL UTILITY: Run this in GAS editor to see all current triggers.
+ * Useful to verify your trigger is set up correctly.
+ */
+function listAllTriggers() {
+  var triggers = ScriptApp.getProjectTriggers();
+  if (triggers.length === 0) {
+    Logger.log('No triggers found. Run createScanTrigger() to set one up.');
+    return;
+  }
+  triggers.forEach(function(t) {
+    Logger.log(
+      'Function: ' + t.getHandlerFunction() +
+      ' | Type: '  + t.getEventType() +
+      ' | Source: '+ t.getTriggerSource()
+    );
+  });
+}
+
+/**
+ * OPTIONAL UTILITY: Run this in GAS editor to remove the scheduled trigger.
+ * Only needed if you want to pause or disable the auto-scan.
+ */
+function deleteScanTrigger() {
+  var count = 0;
+  ScriptApp.getProjectTriggers().forEach(function(trigger) {
+    if (trigger.getHandlerFunction() === 'scheduledMarketScan') {
+      ScriptApp.deleteTrigger(trigger);
+      count++;
+    }
+  });
+  Logger.log(count > 0
+    ? '🗑 Deleted ' + count + ' scheduledMarketScan trigger(s).'
+    : 'No scheduledMarketScan triggers found.');
+}
+
+// ══════════════════════════════════════════════════════════════════
+//  AUTO SCHEDULER — runs market scan every weekday at 20:30 WIB
+//  Step 1: Run createScanTrigger() ONCE in GAS editor to set up
+//  Step 2: Never touch it again — it fires automatically
+// ══════════════════════════════════════════════════════════════════
+
+/**
+ * ONE-TIME SETUP: Run this function once in GAS editor.
+ * Creates a daily trigger at ~20:30 WIB (UTC+7).
+ * Weekend guard is inside scheduledMarketScan() itself.
+ */
+function createScanTrigger() {
+  // Remove any existing scheduledMarketScan triggers to avoid duplicates
+  ScriptApp.getProjectTriggers().forEach(function(trigger) {
+    if (trigger.getHandlerFunction() === 'scheduledMarketScan') {
+      ScriptApp.deleteTrigger(trigger);
+    }
+  });
+
+  // Create a daily trigger at 20:00-21:00 WIB
+  // GAS uses the script timezone (Asia/Jakarta = UTC+7) for atHour()
+  // nearMinute(30) aims for ~20:30 WIB
+  ScriptApp.newTrigger('scheduledMarketScan')
+    .timeBased()
+    .everyDays(1)
+    .atHour(20)
+    .nearMinute(30)
+    .create();
+
+  Logger.log('✅ Trigger created: scheduledMarketScan runs daily at ~20:30 WIB (weekdays only).');
+  Logger.log('Verify: Extensions > Apps Script > Triggers (clock icon on left sidebar).');
+}
+
+/**
+ * Called automatically every day at ~20:30 WIB by the trigger.
+ * Skips weekends. Runs the full market scan and saves to sheet.
+ */
+function scheduledMarketScan() {
+  const tz    = 'Asia/Jakarta';
+  const now   = new Date();
+  const dow   = Utilities.formatDate(now, tz, 'EEEE');
+  const today = Utilities.formatDate(now, tz, 'yyyy-MM-dd');
+
+  // Skip weekends — US markets are closed
+  if (dow === 'Saturday' || dow === 'Sunday') {
+    Logger.log('Skipping scheduled scan — today is ' + dow + ' (' + today + ')');
+    return;
+  }
+
+  // Skip if already scanned today
+  const lastDate = getLastScanDate();
+  if (lastDate === today) {
+    Logger.log('Scan already done today (' + today + '). Skipping.');
+    return;
+  }
+
+  Logger.log('Starting scheduled market scan for ' + today + ' (' + dow + ')...');
+
+  try {
+    // Clear any leftover chunked session from a previous interrupted scan
+    PropertiesService.getScriptProperties().deleteProperty(SCAN_SESSION_PROP);
+
+    // Loop through chunks until scan is complete
+    // GAS triggers have a 6-minute runtime limit — chunking keeps us safe
+    var maxChunks = 50;
+    var done      = false;
+
+    for (var i = 0; i < maxChunks; i++) {
+      var result = JSON.parse(scanInitWebChunk(today).getContent());
+
+      if (result.scanComplete === true) {
+        done = true;
+        Logger.log('Scan complete: ' + result.count + ' top mover(s) found for ' + today);
+        break;
+      }
+
+      if (result.scanComplete === false) {
+        Logger.log('Progress: ' + result.processed + '/' + result.total + ' tickers, ' + (result.count || 0) + ' match(es)...');
+        Utilities.sleep(300);
+        continue;
+      }
+
+      Logger.log('Unexpected scan response at chunk ' + i);
+      break;
+    }
+
+    if (!done) {
+      Logger.log('Warning: scan did not complete within ' + maxChunks + ' chunks.');
+    }
+
+  } catch (err) {
+    Logger.log('Scheduled scan error: ' + err.toString());
+  }
+}
+
+/**
+ * UTILITY: Run in GAS editor to list all current triggers.
+ */
+function listAllTriggers() {
+  var triggers = ScriptApp.getProjectTriggers();
+  if (triggers.length === 0) {
+    Logger.log('No triggers found. Run createScanTrigger() to set one up.');
+    return;
+  }
+  triggers.forEach(function(t) {
+    Logger.log(
+      'Function: ' + t.getHandlerFunction() +
+      ' | Type: '  + t.getEventType() +
+      ' | Source: ' + t.getTriggerSource()
+    );
+  });
+}
+
+/**
+ * UTILITY: Run in GAS editor to remove the scheduled trigger.
+ */
+function deleteScanTrigger() {
+  var count = 0;
+  ScriptApp.getProjectTriggers().forEach(function(trigger) {
+    if (trigger.getHandlerFunction() === 'scheduledMarketScan') {
+      ScriptApp.deleteTrigger(trigger);
+      count++;
+    }
+  });
+  Logger.log(count > 0
+    ? 'Deleted ' + count + ' scheduledMarketScan trigger(s).'
+    : 'No scheduledMarketScan triggers found.');
+}
