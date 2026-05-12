@@ -1144,8 +1144,35 @@ function portfolio(username, hideClose) {
     initBal  = bd.balance || 0;
   } catch(e) {}
 
+  // Calculate total withdrawn and deposited from transactions (CASH rows)
+  let totalWithdrawn = 0, totalDeposited = 0;
+  try {
+    const ss2 = SpreadsheetApp.openById(getSpreadsheetId_());
+    const txS  = ss2.getSheetByName('transactions');
+    if (txS && txS.getLastRow() > 1) {
+      const txRows    = txS.getDataRange().getValues().slice(1);
+      const txHeaders = txS.getDataRange().getValues()[0].map(h => String(h).trim().toLowerCase());
+      const txUCol    = txHeaders.indexOf('username');
+      const txTkCol   = txHeaders.indexOf('ticker');
+      const txTypCol  = txHeaders.indexOf('type');
+      const txAmtCol  = txHeaders.indexOf('amount_usd');
+      const txFeeCol  = txHeaders.indexOf('fee');
+      txRows.forEach(r => {
+        if (String(r[txUCol]||'').trim().toLowerCase() !== String(username).trim().toLowerCase()) return;
+        if (String(r[txTkCol]||'').trim() !== 'CASH') return;
+        const typ = String(r[txTypCol]||'').trim().toUpperCase();
+        const amt = parseFloat(r[txAmtCol]) || 0;
+        const fee = parseFloat(r[txFeeCol]) || 0;
+        if (typ === 'WITHDRAW') totalWithdrawn += amt + fee;
+        if (typ === 'DEPOSIT')  totalDeposited += amt;
+      });
+    }
+  } catch(e) {}
+
   lines.push('─────────────────────');
-  if (initBal > 0) lines.push('Start:    $' + initBal.toFixed(2));
+  if (initBal > 0) lines.push('Capital:  $' + initBal.toFixed(2));
+  if (totalDeposited > 0)  lines.push('Deposited: +$' + totalDeposited.toFixed(2));
+  if (totalWithdrawn > 0)  lines.push('Withdrawn: -$' + totalWithdrawn.toFixed(2));
   lines.push('Invested: $' + totalInvested.toFixed(2));
   lines.push('Value:    $' + totalValue.toFixed(2));
   if (totalRealizedPnl !== 0) {
@@ -1154,11 +1181,11 @@ function portfolio(username, hideClose) {
   const totalPnlStr = (totalPnl >= 0 ? '+' : '') + '$' + totalPnl.toFixed(2);
   if (initBal > 0) {
     const fromStart = totalPnl / initBal * 100;
-    lines.push('Total P&L: ' + totalPnlStr + ' (' + (fromStart >= 0 ? '+' : '') + fromStart.toFixed(1) + '% from start)');
+    lines.push('Total P&L: ' + totalPnlStr + ' (' + (fromStart >= 0 ? '+' : '') + fromStart.toFixed(1) + '% of capital)');
   } else {
     lines.push('Total P&L: ' + totalPnlStr);
   }
-  return json({ message: lines.join('\n'), positions, totalInvested: +totalInvested.toFixed(2), totalValue: +totalValue.toFixed(2), totalPnl: +totalPnl.toFixed(2), totalRealizedPnl: +totalRealizedPnl.toFixed(2), initialBalance: initBal });
+  return json({ message: lines.join('\n'), positions, totalInvested: +totalInvested.toFixed(2), totalValue: +totalValue.toFixed(2), totalPnl: +totalPnl.toFixed(2), totalRealizedPnl: +totalRealizedPnl.toFixed(2), initialBalance: initBal, totalWithdrawn: +totalWithdrawn.toFixed(2), totalDeposited: +totalDeposited.toFixed(2) });
 }
 
 // ══════════════════════════════════════════════
@@ -2585,7 +2612,6 @@ function recordCashFlow(type, amount, username) {
     return json({ success: false, unauthorized: true, message: 'Please login first.' });
 
   const fee      = (type === 'WITHDRAW') ? 5.00 : 0;
-  const netDelta = (type === 'WITHDRAW') ? -(amount + fee) : amount;
   const date     = Utilities.formatDate(new Date(), 'Asia/Jakarta', 'yyyy-MM-dd');
 
   const ss    = SpreadsheetApp.openById(getSpreadsheetId_());
@@ -2596,21 +2622,8 @@ function recordCashFlow(type, amount, username) {
   }
   txSheet.appendRow([date, username, 'CASH', type, amount, 1, amount, fee]);
 
-  const uSheet = ss.getSheetByName('users');
-  if (uSheet) {
-    const rows    = uSheet.getDataRange().getValues();
-    const headers = rows[0].map(function(h){ return String(h).trim().toLowerCase(); });
-    const uCol    = headers.indexOf('username');
-    let   bCol    = headers.indexOf('initial_balance');
-    if (bCol < 0) { bCol = headers.length; uSheet.getRange(1, bCol + 1).setValue('initial_balance'); }
-    for (let i = 1; i < rows.length; i++) {
-      if (String(rows[i][uCol]).trim().toLowerCase() === String(username).trim().toLowerCase()) {
-        const cur = parseFloat(rows[i][bCol]) || 0;
-        uSheet.getRange(i + 1, bCol + 1).setValue(+(Math.max(0, cur + netDelta)).toFixed(2));
-        break;
-      }
-    }
-  }
+  // initial_balance is the user's fixed capital baseline (set only by BALANCE command)
+  // DEPOSIT/WITHDRAW are tracked in transactions only — they do NOT change initial_balance
   SpreadsheetApp.flush();
 
   if (type === 'DEPOSIT') {
